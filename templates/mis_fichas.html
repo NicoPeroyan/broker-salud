@@ -1,0 +1,63 @@
+{% extends "base_asesor.html" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+
+    {% include "_asesor_kpis.html" %}
+
+    <div class="card mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 class="page-title mb-0">Mis Fichas Cargadas</h2>
+            <a href="/cargar-ficha" class="btn btn-primary">Cargar nueva ficha</a>
+        </div>
+        
+        {% if fichas|length == 0 %}
+            <p class="text-[var(--muted)] text-center py-8">No tienes fichas cargadas aún. <a href="/cargar-ficha" class="text-[var(--accent)] hover:underline">Cargar primera ficha</a></p>
+        {% else %}
+            
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Afiliado</th>
+                            <th>CUIL</th>
+                            <th>Grupo Familiar</th>
+                            <th>Sueldo Bruto</th>
+                            <th>Prepaga</th>
+                            <th>Plan</th>
+                            <th>Aporte</th>
+                            <th>Comisión</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ficha in fichas %}
+                        <tr>
+                            <td>{{ ficha.nombre_afiliado }}</td>
+                            <td>{{ ficha.cuil_afiliado }}</td>
+                            <td>{{ ficha.grupo_familiar }}</td>
+                            <td>{{ ficha.sueldo_bruto|ars(2) }}</td>
+                            <td><span class="prepaga-badge">{{ ficha.prepaga }}</span></td>
+                            <td>{{ ficha.plan or 'N/A' }}</td>
+                            <td>{{ ficha.aporte|ars(2) }}</td>
+                            <td>{{ ficha.importe_comision|ars(2) }}</td>
+                            <td>
+                                <span class="status-badge {{ ficha.estado|lower }}">
+                                    {{ ficha.estado }}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="/fichas/{{ ficha.id }}/detalle" class="text-[var(--accent)] text-sm hover:underline">Ver</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base_asesor.html" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    
+    <div class="card">
+        <h2 class="page-title mb-4">Cargar Nueva Ficha</h2>
+        
+        <form method="POST" action="/fichas" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                <div>
+                    <label class="form-label">Nombre del Afiliado <span class="text-[var(--error)]">*</span></label>
+                    <input type="text" name="nombre_afiliado" class="form-input" required autocomplete="name">
+                </div>
+                
+                <div>
+                    <label class="form-label">CUIL del Afiliado <span class="text-[var(--error)]">*</span></label>
+                    <input type="text" name="cuil_afiliado" class="form-input" required autocomplete="cc-number">
+                </div>
+                
+                <div>
+                    <label class="form-label">Cantidad del Grupo Familiar <span class="text-[var(--error)]">*</span></label>
+                    <input type="number" name="grupo_familiar" class="form-input" min="1" required>
+                </div>
+                
+                <div>
+                    <label class="form-label">Sueldo Bruto <span class="text-[var(--error)]">*</span></label>
+                    <input type="number" name="sueldo_bruto" class="form-input" min="0" step="100" required>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                <div>
+                    <label class="form-label">Prepaga <span class="text-[var(--error)]">*</span></label>
+                    <select name="prepaga" class="form-select" required>
+                        <option value="" disabled selected>Seleccionar prepaga</option>
+                        <option value="Andes Salud">Andes Salud</option>
+                        <option value="Nobis Medical">Nobis Medical</option>
+                        <option value="Prevención Salud">Prevención Salud</option>
+                        <option value="Premedic">Premedic</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="form-label">Plan</label>
+                    <input type="text" name="plan" class="form-input" placeholder="Ej: Plano Médico, Oro, Bronce, Diamante">
+                </div>
+                
+            </div>
+            
+            <div>
+                <label class="form-label">Aporte <span class="text-[var(--error)]">*</span></label>
+                <input type="number" name="aporte" class="form-input" min="0" step="100" required>
+                <p class="text-xs text-[var(--muted)] mt-1">El comisión se calculará automáticamente según la prepaga seleccionada.</p>
+            </div>
+            
+            <button type="submit" class="w-full btn btn-primary py-2.5">
+                Guardar Ficha
+            </button>
+        </form>
+    </div>
+    
+</div>
+{% endblock %}

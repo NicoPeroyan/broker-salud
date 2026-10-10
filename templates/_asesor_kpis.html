@@ -1,0 +1,52 @@
+<section class="mb-6" aria-label="Resumen de comisiones del período activo">
+    <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div>
+            <h2 class="page-title mb-1">Mi liquidación</h2>
+            <p class="text-sm text-[var(--muted)]">
+                Resumen de los períodos activos de cada prepaga
+            </p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        {% for resumen in resumen_prepagas %}
+            <article class="card flex flex-col justify-between">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-sm text-[var(--muted)]">A liquidar</p>
+                        <h3 class="text-xl sm:text-2xl font-bold text-[var(--accent)] mt-1">
+                            {{ resumen.importe_formateado }}
+                        </h3>
+                    </div>
+                    <span class="prepaga-badge">{{ resumen.prepaga }}</span>
+                </div>
+                <div class="mt-5 pt-4 border-t border-[var(--border)]">
+                    <p class="font-semibold">
+                        {{ resumen.fichas_total }} ficha{% if resumen.fichas_total != 1 %}s{% endif %}
+                        de {{ resumen.prepaga }}
+                    </p>
+                    <p class="text-sm text-[var(--muted)] mt-1">
+                        {{ resumen.fichas_aprobadas }} aprobada{% if resumen.fichas_aprobadas != 1 %}s{% endif %}
+                        · solo las aprobadas se liquidan
+                    </p>
+                    <p class="text-xs text-[var(--muted)] mt-2">Período {{ resumen.periodo }}</p>
+                </div>
+            </article>
+        {% else %}
+            <article class="card sm:col-span-2 xl:col-span-3">
+                <p class="text-[var(--muted)]">
+                    Todavía no tienes fichas para resumir en el período activo.
+                </p>
+            </article>
+        {% endfor %}
+
+        <article class="card flex flex-col justify-center border-t-2 border-[var(--accent)]"
+                 aria-label="Total general de liquidación">
+            <p class="text-sm text-[var(--muted)]">Total liquidable del mes</p>
+            <p class="text-2xl sm:text-3xl font-bold text-[var(--fg)] mt-2">
+                {{ total_general_formateado }}
+            </p>
+            <p class="text-xs text-[var(--muted)] mt-2">Suma de comisiones aprobadas</p>
+        </article>
+    </div>
+</section>

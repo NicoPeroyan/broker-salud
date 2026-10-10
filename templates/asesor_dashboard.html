@@ -1,0 +1,59 @@
+{% extends "base_asesor.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    {% include "_asesor_kpis.html" %}
+
+    <section class="card">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 class="page-title mb-1">Actividad reciente</h2>
+                <p class="text-sm text-[var(--muted)]">Tus últimas fichas cargadas</p>
+            </div>
+            <a href="/mis-fichas" class="btn btn-secondary">Ver todas mis fichas</a>
+        </div>
+
+        {% if fichas %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Afiliado</th>
+                            <th>CUIL</th>
+                            <th>Prepaga</th>
+                            <th>Plan</th>
+                            <th>Comisión</th>
+                            <th>Estado</th>
+                            <th>Período</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ficha in fichas %}
+                            <tr>
+                                <td>{{ ficha.cliente_nombre }}</td>
+                                <td>{{ ficha.cuil }}</td>
+                                <td><span class="prepaga-badge">{{ ficha.prepaga }}</span></td>
+                                <td>{{ ficha.plan or 'N/A' }}</td>
+                                <td>{{ ficha.importe_comision|ars(2) }}</td>
+                                <td>
+                                    <span class="status-badge {{ ficha.estado|lower }}">
+                                        {{ ficha.estado }}
+                                    </span>
+                                </td>
+                                <td>{{ ficha.periodo }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-[var(--muted)] text-center py-8">
+                Aún no tienes fichas cargadas.
+                <a href="/cargar-ficha" class="text-[var(--accent)] hover:underline">
+                    Cargar primera ficha
+                </a>
+            </p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

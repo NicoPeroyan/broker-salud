@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Broker de Salud</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0e17;
+            --bg-subtle: #111827;
+            --fg: #f8f9fa;
+            --muted: #6b7280;
+            --accent: #10b981;
+            --accent-hover: #059669;
+            --card: #1e293b;
+            --border: #374151;
+            --error: #ef4444;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            min-height: 100vh;
+            margin: 0;
+        }
+        
+        .bg-pattern {
+            background-image: 
+                radial-gradient(ellipse 80% 50% at 20% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 50%);
+        }
+        
+        .bg-pattern::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            z-index: -1;
+        }
+        
+        .login-card {
+            max-width: 420px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .login-card h2 {
+            font-weight: 700;
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .login-card p {
+            color: var(--muted);
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .input-group {
+            margin-bottom: 1rem;
+        }
+        
+        .input-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--fg);
+        }
+        
+        .input-group input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--fg);
+            font-size: 1rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--accent);
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            margin-top: 1rem;
+        }
+        
+        .btn-login:hover {
+            background: var(--accent-hover);
+        }
+        
+        .btn-login:active {
+            transform: scale(0.98);
+        }
+        
+        .error-msg {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+        
+        .footer-text {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.75rem;
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 600px) {
+            .login-card {
+                width: 100%;
+                max-width: 28rem;
+                padding: 1.25rem;
+            }
+
+            .login-card h2 { font-size: 1.5rem; }
+            .input-group input, .btn-login { min-height: 48px; }
+            .min-h-screen { padding: 0.75rem; }
+        }
+    </style>
+</head>
+<body class="bg-pattern">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="login-card bg-[var(--bg-subtle)] rounded-xl border border-[var(--border)]">
+            <h2>Iniciar Sesión</h2>
+            
+            {% if error %}
+                <div class="error-msg">{{ error }}</div>
+            {% endif %}
+            
+            <form method="post" action="/login">
+                <div class="input-group">
+                    <label for="username">Usuario o correo electrónico</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                
+                <div class="input-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                
+                <button type="submit" class="btn-login">Entrar al Sistema</button>
+            </form>
+            
+            <p class="footer-text mt-6">Broker de Salud - Sistema de Fichas y Comisiones</p>
+        </div>
+    </div>
+</body>
+</html>
