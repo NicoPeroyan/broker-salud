@@ -35,6 +35,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
+DATABASE_URL = os.environ.get("DATABASE_URL")
 DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", BASE_DIR / "app.db"))
 PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 VALID_STATES = {"APROBADA", "RECHAZADA"}
@@ -62,15 +63,55 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
+class DatabaseConnection:
+    def __init__(self, raw_connection: Any, is_postgres: bool) -> None:
+        self.raw_connection = raw_connection
+        self.is_postgres = is_postgres
+
+    def execute(self, statement: str, parameters: Any = ()) -> Any:
+        if self.is_postgres:
+            statement = statement.replace("?", "%s")
+        return self.raw_connection.execute(statement, parameters)
+
+    def commit(self) -> None:
+        self.raw_connection.commit()
+
+    def rollback(self) -> None:
+        self.raw_connection.rollback()
+
+    def close(self) -> None:
+        self.raw_connection.close()
+
+
 @contextmanager
-def db_connection() -> Generator[sqlite3.Connection, None, None]:
+def db_connection() -> Generator[DatabaseConnection, None, None]:
     """Abre una conexión por operación y garantiza commit/rollback y cierre."""
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH, timeout=15)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA busy_timeout = 15000")
+    if DATABASE_URL:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        postgres_url = DATABASE_URL
+        if postgres_url.startswith("postgres://"):
+            postgres_url = "postgresql://" + postgres_url.removeprefix("postgres://")
+        elif postgres_url.startswith("postgresql+psycopg://"):
+            postgres_url = "postgresql://" + postgres_url.removeprefix(
+                "postgresql+psycopg://"
+            )
+        raw_connection = psycopg.connect(
+            postgres_url,
+            row_factory=dict_row,
+            connect_timeout=15,
+        )
+        connection = DatabaseConnection(raw_connection, is_postgres=True)
+    else:
+        DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        raw_connection = sqlite3.connect(DATABASE_PATH, timeout=15)
+        raw_connection.row_factory = sqlite3.Row
+        connection = DatabaseConnection(raw_connection, is_postgres=False)
     try:
+        if not connection.is_postgres:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 15000")
         yield connection
         connection.commit()
     except Exception:
@@ -80,12 +121,32 @@ def db_connection() -> Generator[sqlite3.Connection, None, None]:
         connection.close()
 
 
-def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
+def _columns(connection: DatabaseConnection, table: str) -> set[str]:
+    if connection.is_postgres:
+        return {
+            row["name"]
+            for row in connection.execute(
+                "SELECT column_name AS name FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = ?",
+                (table,),
+            )
+        }
     return {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
 
 
+def _table_exists(connection: DatabaseConnection, table: str) -> bool:
+    if connection.is_postgres:
+        query = (
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = current_schema() AND table_name = ?"
+        )
+    else:
+        query = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
+    return connection.execute(query, (table,)).fetchone() is not None
+
+
 def _add_column(
-    connection: sqlite3.Connection, table: str, name: str, declaration: str
+    connection: DatabaseConnection, table: str, name: str, declaration: str
 ) -> None:
     if name not in _columns(connection, table):
         connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
@@ -94,10 +155,14 @@ def _add_column(
 def init_db() -> None:
     """Crea las tablas nuevas y migra de forma aditiva las instalaciones previas."""
     with db_connection() as connection:
+        user_id_type = "SERIAL PRIMARY KEY" if connection.is_postgres else (
+            "INTEGER PRIMARY KEY AUTOINCREMENT"
+        )
+        ficha_id_type = user_id_type
         connection.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS usuarios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {user_id_type},
                 username TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL DEFAULT '',
                 rol TEXT NOT NULL DEFAULT 'asesor'
@@ -112,9 +177,9 @@ def init_db() -> None:
             """
         )
         connection.execute(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS fichas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {ficha_id_type},
                 asesor_id INTEGER NOT NULL,
                 cliente_nombre TEXT,
                 cuil TEXT,
@@ -127,7 +192,7 @@ def init_db() -> None:
                 fecha_carga TEXT,
                 nombre_afiliado TEXT,
                 cuil_afiliado TEXT,
-                grupo_familiar INTEGER,
+                grupo_familiar TEXT NOT NULL DEFAULT 'Sin especificar',
                 sueldo_bruto REAL DEFAULT 0,
                 aporte REAL DEFAULT 0,
                 porcentaje_comision REAL DEFAULT 1,
@@ -163,7 +228,7 @@ def init_db() -> None:
             ("fecha_carga", "TEXT"),
             ("nombre_afiliado", "TEXT"),
             ("cuil_afiliado", "TEXT"),
-            ("grupo_familiar", "INTEGER"),
+            ("grupo_familiar", "TEXT NOT NULL DEFAULT 'Sin especificar'"),
             ("sueldo_bruto", "REAL DEFAULT 0"),
             ("aporte", "REAL DEFAULT 0"),
             ("porcentaje_comision", "REAL DEFAULT 1"),
@@ -172,6 +237,28 @@ def init_db() -> None:
         )
         for name, declaration in ficha_columns:
             _add_column(connection, "fichas", name, declaration)
+
+        if connection.is_postgres:
+            connection.execute(
+                "ALTER TABLE fichas ALTER COLUMN grupo_familiar TYPE TEXT "
+                "USING grupo_familiar::TEXT"
+            )
+            connection.execute(
+                "ALTER TABLE fichas ALTER COLUMN grupo_familiar "
+                "SET DEFAULT 'Sin especificar'"
+            )
+            connection.execute(
+                "UPDATE fichas SET grupo_familiar = 'Sin especificar' "
+                "WHERE grupo_familiar IS NULL"
+            )
+            connection.execute(
+                "ALTER TABLE fichas ALTER COLUMN grupo_familiar SET NOT NULL"
+            )
+        else:
+            connection.execute(
+                "UPDATE fichas SET grupo_familiar = 'Sin especificar' "
+                "WHERE grupo_familiar IS NULL"
+            )
 
         connection.execute(
             """
@@ -183,7 +270,7 @@ def init_db() -> None:
                 ),
                 rol = CASE
                     WHEN LOWER(COALESCE(rol, '')) = 'admin'
-                         OR COALESCE(es_admin, 0) = 1 THEN 'admin'
+                         OR es_admin IS TRUE THEN 'admin'
                     ELSE 'asesor'
                 END
             """
@@ -197,8 +284,18 @@ def init_db() -> None:
                 f"UPDATE fichas SET importe_comision = {commission_expression}"
             )
 
+        fecha_carga_fallback = (
+            "CURRENT_DATE::TEXT"
+            if connection.is_postgres
+            else "date('now', 'localtime')"
+        )
+        periodo_fallback = (
+            "TO_CHAR(CURRENT_DATE, 'YYYY-MM')"
+            if connection.is_postgres
+            else "strftime('%Y-%m', 'now', 'localtime')"
+        )
         connection.execute(
-            """
+            f"""
             UPDATE fichas
             SET cliente_nombre = COALESCE(
                     NULLIF(cliente_nombre, ''), nombre_afiliado, ''
@@ -206,11 +303,11 @@ def init_db() -> None:
                 cuil = COALESCE(NULLIF(cuil, ''), cuil_afiliado, ''),
                 fecha_carga = COALESCE(
                     NULLIF(fecha_carga, ''), substr(fecha_creacion, 1, 10),
-                    date('now', 'localtime')
+                    {fecha_carga_fallback}
                 ),
                 periodo = COALESCE(
                     NULLIF(periodo, ''), substr(fecha_creacion, 1, 7),
-                    strftime('%Y-%m', 'now', 'localtime')
+                    {periodo_fallback}
                 ),
                 estado = CASE UPPER(TRIM(COALESCE(estado, '')))
                     WHEN 'APROBADA' THEN 'APROBADA'
@@ -262,7 +359,9 @@ def _month_after(period: str) -> str:
     return f"{year + (month == 12):04d}-{1 if month == 12 else month + 1:02d}"
 
 
-def _active_period(connection: sqlite3.Connection, prepaga: str | None = None) -> str:
+def _active_period(
+    connection: DatabaseConnection, prepaga: str | None = None
+) -> str:
     current_period = date.today().strftime("%Y-%m")
     if prepaga is None:
         last_closed = connection.execute(
@@ -285,7 +384,7 @@ def _active_period(connection: sqlite3.Connection, prepaga: str | None = None) -
 
 
 def _filter_active_prepaga_periods(
-    connection: sqlite3.Connection,
+    connection: DatabaseConnection,
     clauses: list[str],
     values: list[Any],
     prepaga_filter: str,
@@ -298,7 +397,7 @@ def _filter_active_prepaga_periods(
             for row in connection.execute(
                 "SELECT DISTINCT prepaga FROM fichas "
                 "WHERE prepaga IS NOT NULL AND prepaga != '' "
-                "ORDER BY prepaga COLLATE NOCASE"
+                "ORDER BY LOWER(prepaga)"
             )
         ]
     )
@@ -330,7 +429,7 @@ def format_ars(value: Any, decimals: int = 0) -> str:
 app.jinja_env.filters["ars"] = format_ars
 
 
-def _dict_ficha(row: sqlite3.Row) -> dict[str, Any]:
+def _dict_ficha(row: Any) -> dict[str, Any]:
     ficha = dict(row)
     ficha["estado"] = str(ficha.get("estado") or "PENDIENTE").upper()
     ficha["nombre_afiliado"] = ficha.get("cliente_nombre") or ""
@@ -500,7 +599,7 @@ def admin_dashboard() -> Any:
                 """
                 SELECT id, username, nombre_completo
                 FROM usuarios WHERE rol = 'asesor'
-                ORDER BY nombre_completo COLLATE NOCASE, id
+                ORDER BY LOWER(nombre_completo), id
                 """
             )
         ]
@@ -509,7 +608,7 @@ def admin_dashboard() -> Any:
             for row in connection.execute(
                 "SELECT DISTINCT prepaga FROM fichas "
                 "WHERE prepaga IS NOT NULL AND prepaga != '' "
-                "ORDER BY prepaga COLLATE NOCASE"
+                "ORDER BY LOWER(prepaga)"
             )
         ]
         selected_advisor = next(
@@ -555,7 +654,7 @@ def admin_dashboard() -> Any:
             FROM fichas AS f
             {summary_where}
             GROUP BY f.prepaga
-            ORDER BY f.prepaga COLLATE NOCASE
+            ORDER BY LOWER(f.prepaga)
             """,
             summary_query_values,
         ).fetchall()
@@ -825,7 +924,7 @@ def _advisor_dashboard_data(
                 SELECT DISTINCT prepaga
                 FROM fichas
                 WHERE asesor_id = ? AND prepaga IS NOT NULL AND prepaga != ''
-                ORDER BY prepaga COLLATE NOCASE
+                ORDER BY LOWER(prepaga)
                 """,
                 (advisor_id,),
             )
@@ -954,6 +1053,7 @@ def crear_ficha() -> Any:
     cuil = (request.form.get("cuil") or request.form.get("cuil_afiliado") or "").strip()
     prepaga = request.form.get("prepaga", "").strip()
     plan = request.form.get("plan", "").strip()
+    grupo_familiar = request.form.get("grupo_familiar") or "Sin especificar"
     raw_commission = request.form.get("importe_comision", "").strip()
     try:
         if not client_name or not cuil or not prepaga:
@@ -969,8 +1069,9 @@ def crear_ficha() -> Any:
                 INSERT INTO fichas (
                     asesor_id, cliente_nombre, cuil, prepaga, plan,
                     importe_comision, estado, periodo, fecha_carga,
-                    nombre_afiliado, cuil_afiliado, aporte, fecha_creacion
-                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?)
+                    nombre_afiliado, cuil_afiliado, grupo_familiar, aporte,
+                    fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session["user_id"],
@@ -983,6 +1084,7 @@ def crear_ficha() -> Any:
                     date.today().isoformat(),
                     client_name,
                     cuil,
+                    grupo_familiar,
                     float(commission),
                     datetime.now().isoformat(timespec="seconds"),
                 ),
@@ -1027,17 +1129,11 @@ def limpiar_db_pruebas(confirmar: bool) -> None:
         fichas_deleted = connection.execute("DELETE FROM fichas").rowcount
         cierres_prepaga_deleted = 0
         cierres_periodo_deleted = 0
-        if connection.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'cierres_prepaga'"
-        ).fetchone():
+        if _table_exists(connection, "cierres_prepaga"):
             cierres_prepaga_deleted = connection.execute(
                 "DELETE FROM cierres_prepaga"
             ).rowcount
-        if connection.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'cierres_periodo'"
-        ).fetchone():
+        if _table_exists(connection, "cierres_periodo"):
             cierres_periodo_deleted = connection.execute(
                 "DELETE FROM cierres_periodo"
             ).rowcount
