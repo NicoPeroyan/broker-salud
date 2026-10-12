@@ -1029,16 +1029,18 @@ def cargar_ficha() -> Any:
     )
 
 
-def _parse_amount(raw_value: str) -> Decimal:
+def _parse_amount(
+    raw_value: str, amount_name: str = "importe de comisión"
+) -> Decimal:
     cleaned = raw_value.strip().replace("$", "").replace(" ", "")
     if "," in cleaned:
         cleaned = cleaned.replace(".", "").replace(",", ".")
     try:
         amount = Decimal(cleaned)
     except InvalidOperation as exc:
-        raise ValueError("El importe de comisión no es válido.") from exc
+        raise ValueError(f"El {amount_name} no es válido.") from exc
     if not amount.is_finite() or amount < 0:
-        raise ValueError("El importe de comisión debe ser un valor no negativo.")
+        raise ValueError(f"El {amount_name} debe ser un valor no negativo.")
     return amount
 
 
@@ -1054,10 +1056,12 @@ def crear_ficha() -> Any:
     prepaga = request.form.get("prepaga", "").strip()
     plan = request.form.get("plan", "").strip()
     grupo_familiar = request.form.get("grupo_familiar") or "Sin especificar"
+    raw_salary = request.form.get("sueldo_bruto", "")
     raw_commission = request.form.get("importe_comision", "").strip()
     try:
         if not client_name or not cuil or not prepaga:
             raise ValueError("Nombre, CUIL y prepaga son obligatorios.")
+        salary = _parse_amount(raw_salary, "sueldo bruto")
         commission = _parse_amount(
             raw_commission or request.form.get("aporte", "0")
         )
@@ -1069,9 +1073,9 @@ def crear_ficha() -> Any:
                 INSERT INTO fichas (
                     asesor_id, cliente_nombre, cuil, prepaga, plan,
                     importe_comision, estado, periodo, fecha_carga,
-                    nombre_afiliado, cuil_afiliado, grupo_familiar, aporte,
-                    fecha_creacion
-                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?)
+                    nombre_afiliado, cuil_afiliado, grupo_familiar,
+                    sueldo_bruto, aporte, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session["user_id"],
@@ -1085,6 +1089,7 @@ def crear_ficha() -> Any:
                     client_name,
                     cuil,
                     grupo_familiar,
+                    float(salary),
                     float(commission),
                     datetime.now().isoformat(timespec="seconds"),
                 ),
