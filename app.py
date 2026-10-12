@@ -192,6 +192,9 @@ def init_db() -> None:
                 fecha_carga TEXT,
                 nombre_afiliado TEXT,
                 cuil_afiliado TEXT,
+                empresa TEXT,
+                clave_fiscal TEXT,
+                telefono TEXT,
                 grupo_familiar TEXT NOT NULL DEFAULT 'Sin especificar',
                 sueldo_bruto REAL DEFAULT 0,
                 aporte REAL DEFAULT 0,
@@ -228,6 +231,9 @@ def init_db() -> None:
             ("fecha_carga", "TEXT"),
             ("nombre_afiliado", "TEXT"),
             ("cuil_afiliado", "TEXT"),
+            ("empresa", "TEXT"),
+            ("clave_fiscal", "TEXT"),
+            ("telefono", "TEXT"),
             ("grupo_familiar", "TEXT NOT NULL DEFAULT 'Sin especificar'"),
             ("sueldo_bruto", "REAL DEFAULT 0"),
             ("aporte", "REAL DEFAULT 0"),
@@ -1055,6 +1061,9 @@ def crear_ficha() -> Any:
     cuil = (request.form.get("cuil") or request.form.get("cuil_afiliado") or "").strip()
     prepaga = request.form.get("prepaga", "").strip()
     plan = request.form.get("plan", "").strip()
+    empresa = (request.form.get("empresa") or "").strip()
+    clave_fiscal = (request.form.get("clave_fiscal") or "").strip()
+    telefono = (request.form.get("telefono") or "").strip()
     grupo_familiar = request.form.get("grupo_familiar") or "Sin especificar"
     raw_salary = request.form.get("sueldo_bruto", "")
     raw_commission = request.form.get("importe_comision", "").strip()
@@ -1073,9 +1082,9 @@ def crear_ficha() -> Any:
                 INSERT INTO fichas (
                     asesor_id, cliente_nombre, cuil, prepaga, plan,
                     importe_comision, estado, periodo, fecha_carga,
-                    nombre_afiliado, cuil_afiliado, grupo_familiar,
-                    sueldo_bruto, aporte, fecha_creacion
-                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?)
+                    nombre_afiliado, cuil_afiliado, empresa, clave_fiscal,
+                    telefono, grupo_familiar, sueldo_bruto, aporte, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session["user_id"],
@@ -1088,6 +1097,9 @@ def crear_ficha() -> Any:
                     date.today().isoformat(),
                     client_name,
                     cuil,
+                    empresa,
+                    clave_fiscal,
+                    telefono,
                     grupo_familiar,
                     float(salary),
                     float(commission),
