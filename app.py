@@ -395,9 +395,9 @@ def _filter_active_prepaga_periods(
         else [
             row["prepaga"]
             for row in connection.execute(
-                "SELECT DISTINCT prepaga FROM fichas "
+                "SELECT DISTINCT prepaga, LOWER(prepaga) AS prepaga_sort FROM fichas "
                 "WHERE prepaga IS NOT NULL AND prepaga != '' "
-                "ORDER BY LOWER(prepaga)"
+                "ORDER BY prepaga_sort"
             )
         ]
     )
@@ -606,9 +606,9 @@ def admin_dashboard() -> Any:
         prepaga_options = [
             row["prepaga"]
             for row in connection.execute(
-                "SELECT DISTINCT prepaga FROM fichas "
+                "SELECT DISTINCT prepaga, LOWER(prepaga) AS prepaga_sort FROM fichas "
                 "WHERE prepaga IS NOT NULL AND prepaga != '' "
-                "ORDER BY LOWER(prepaga)"
+                "ORDER BY prepaga_sort"
             )
         ]
         selected_advisor = next(
@@ -921,10 +921,10 @@ def _advisor_dashboard_data(
             row["prepaga"]
             for row in connection.execute(
                 """
-                SELECT DISTINCT prepaga
+                SELECT DISTINCT prepaga, LOWER(prepaga) AS prepaga_sort
                 FROM fichas
                 WHERE asesor_id = ? AND prepaga IS NOT NULL AND prepaga != ''
-                ORDER BY LOWER(prepaga)
+                ORDER BY prepaga_sort
                 """,
                 (advisor_id,),
             )
