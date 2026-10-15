@@ -38,8 +38,10 @@ BASE_DIR = Path(__file__).resolve().parent
 DATABASE_URL = os.environ.get("DATABASE_URL")
 DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", BASE_DIR / "app.db"))
 PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+PASSWORD_HASH_RE = re.compile(
+    r"^(?:scrypt:\d+:\d+:\d+|pbkdf2:[^$]+)\$[^$]+\$[^$]+$"
+)
 VALID_STATES = {"APROBADA", "RECHAZADA"}
-RESET_PASSWORD = "Arper123"
 DEFAULT_PREPAGAS = ("Premedic", "Andes Salud", "Prevención Salud", "Nobis")
 
 app = Flask(__name__)
@@ -56,8 +58,7 @@ app.config.update(
     SECRET_KEY=secret_key,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "").lower()
-    in {"1", "true", "yes"},
+    SESSION_COOKIE_SECURE=True,
     MAX_CONTENT_LENGTH=1024 * 1024,
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
@@ -181,6 +182,33 @@ def _add_column(
         connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
 
 
+def _is_password_hash(value: str) -> bool:
+    return bool(PASSWORD_HASH_RE.fullmatch(value))
+
+
+def _migrate_password_hashes(connection: DatabaseConnection) -> None:
+    users = connection.execute(
+        "SELECT id, password, password_hash FROM usuarios"
+    ).fetchall()
+    for user in users:
+        stored_password = user["password"] or ""
+        stored_hash = user["password_hash"] or ""
+        if _is_password_hash(stored_hash):
+            password_hash = stored_hash
+        elif _is_password_hash(stored_password):
+            password_hash = stored_password
+        elif stored_password:
+            password_hash = generate_password_hash(stored_password)
+        elif stored_hash:
+            password_hash = generate_password_hash(stored_hash)
+        else:
+            password_hash = ""
+        connection.execute(
+            "UPDATE usuarios SET password = '', password_hash = ? WHERE id = ?",
+            (password_hash, user["id"]),
+        )
+
+
 def init_db() -> None:
     """Crea las tablas nuevas y migra de forma aditiva las instalaciones previas."""
     with db_connection() as connection:
@@ -207,6 +235,19 @@ def init_db() -> None:
         )
         connection.execute(
             f"""
+            CREATE TABLE IF NOT EXISTS periodos_cierre (
+                id {user_id_type},
+                nombre_periodo TEXT NOT NULL UNIQUE,
+                fecha_cierre TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                usuario_cierre_id INTEGER,
+                estado TEXT NOT NULL DEFAULT 'activo'
+                    CHECK (estado IN ('activo', 'cerrado')),
+                FOREIGN KEY (usuario_cierre_id) REFERENCES usuarios(id)
+            )
+            """
+        )
+        connection.execute(
+            f"""
             CREATE TABLE IF NOT EXISTS fichas (
                 id {ficha_id_type},
                 asesor_id INTEGER NOT NULL,
@@ -228,9 +269,14 @@ def init_db() -> None:
                 sueldo_bruto REAL DEFAULT 0,
                 aporte REAL DEFAULT 0,
                 porcentaje_comision REAL DEFAULT 1,
+                periodo_cierre_id INTEGER,
+                porcentaje_comision_cierre REAL,
+                importe_comision_cierre REAL,
+                comision_liquidada_cierre REAL,
                 motivo_rechazo TEXT,
                 fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (asesor_id) REFERENCES usuarios(id)
+                FOREIGN KEY (asesor_id) REFERENCES usuarios(id),
+                FOREIGN KEY (periodo_cierre_id) REFERENCES periodos_cierre(id)
             )
             """
         )
@@ -282,6 +328,10 @@ def init_db() -> None:
             ("sueldo_bruto", "REAL DEFAULT 0"),
             ("aporte", "REAL DEFAULT 0"),
             ("porcentaje_comision", "REAL DEFAULT 1"),
+            ("periodo_cierre_id", "INTEGER REFERENCES periodos_cierre(id)"),
+            ("porcentaje_comision_cierre", "REAL"),
+            ("importe_comision_cierre", "REAL"),
+            ("comision_liquidada_cierre", "REAL"),
             ("motivo_rechazo", "TEXT"),
             ("fecha_creacion", "TEXT"),
         )
@@ -324,6 +374,10 @@ def init_db() -> None:
                     ELSE 'asesor'
                 END
             """
+        )
+        _migrate_password_hashes(connection)
+        connection.execute(
+            "UPDATE fichas SET clave_fiscal = NULL WHERE clave_fiscal IS NOT NULL"
         )
 
         if "importe_comision" not in ficha_columns_before_migration:
@@ -377,6 +431,10 @@ def init_db() -> None:
             "ON fichas(periodo, asesor_id)"
         )
         connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fichas_periodo_cierre "
+            "ON fichas(periodo_cierre_id, asesor_id)"
+        )
+        connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_fichas_estado_prepaga "
             "ON fichas(estado, prepaga)"
         )
@@ -401,6 +459,94 @@ def init_db() -> None:
                 FOREIGN KEY (cerrado_por) REFERENCES usuarios(id)
             )
             """
+        )
+        legacy_closures = connection.execute(
+            """
+            SELECT periodo, fecha_cierre, cerrado_por, 1 AS cierre_global
+            FROM cierres_periodo
+            UNION ALL
+            SELECT periodo, fecha_cierre, cerrado_por, 0 AS cierre_global
+            FROM cierres_prepaga
+            """
+        ).fetchall()
+        period_closures: dict[str, dict[str, Any]] = {}
+        for closure in legacy_closures:
+            name = closure["periodo"]
+            if not name:
+                continue
+            data = period_closures.setdefault(
+                name,
+                {
+                    "global": False,
+                    "fecha_cierre": closure["fecha_cierre"],
+                    "usuario_cierre_id": closure["cerrado_por"],
+                },
+            )
+            if closure["cierre_global"]:
+                data["global"] = True
+                data["fecha_cierre"] = closure["fecha_cierre"]
+                data["usuario_cierre_id"] = closure["cerrado_por"]
+        for name, data in period_closures.items():
+            status = "cerrado" if data["global"] else "activo"
+            connection.execute(
+                """
+                INSERT INTO periodos_cierre (
+                    nombre_periodo, fecha_cierre, usuario_cierre_id, estado
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT (nombre_periodo) DO NOTHING
+                """,
+                (
+                    name,
+                    data["fecha_cierre"],
+                    data["usuario_cierre_id"],
+                    status,
+                ),
+            )
+            if data["global"]:
+                connection.execute(
+                    """
+                    UPDATE periodos_cierre SET estado = 'cerrado'
+                    WHERE nombre_periodo = ?
+                    """,
+                    (name,),
+                )
+        connection.execute(
+            """
+            UPDATE fichas
+            SET periodo_cierre_id = (
+                    SELECT id FROM periodos_cierre
+                    WHERE nombre_periodo = fichas.periodo
+                ),
+                porcentaje_comision_cierre = COALESCE(
+                    porcentaje_comision_cierre, porcentaje_comision
+                ),
+                importe_comision_cierre = COALESCE(
+                    importe_comision_cierre, importe_comision
+                ),
+                comision_liquidada_cierre = COALESCE(
+                    comision_liquidada_cierre,
+                    CASE WHEN estado = 'APROBADA'
+                         THEN importe_comision ELSE 0 END
+                )
+            WHERE EXISTS (
+                    SELECT 1 FROM cierres_periodo
+                    WHERE cierres_periodo.periodo = fichas.periodo
+                )
+               OR EXISTS (
+                    SELECT 1 FROM cierres_prepaga
+                    WHERE cierres_prepaga.periodo = fichas.periodo
+                      AND cierres_prepaga.prepaga = fichas.prepaga
+                )
+            """
+        )
+        active_period = _active_period(connection)
+        connection.execute(
+            """
+            INSERT INTO periodos_cierre (nombre_periodo, estado)
+            VALUES (?, 'activo')
+            ON CONFLICT (nombre_periodo) DO NOTHING
+            """,
+            (active_period,),
         )
         users = connection.execute("SELECT id FROM usuarios").fetchall()
         for user in users:
@@ -573,6 +719,52 @@ def format_ars(value: Any, decimals: int = 0) -> str:
     return "$ " + rendered.replace(",", "_").replace(".", ",").replace("_", ".")
 
 
+def _ensure_period_record(
+    connection: DatabaseConnection,
+    period: str,
+    status: str = "activo",
+    user_id: int | None = None,
+) -> int:
+    connection.execute(
+        """
+        INSERT INTO periodos_cierre (
+            nombre_periodo, usuario_cierre_id, estado
+        ) VALUES (?, ?, ?)
+        ON CONFLICT (nombre_periodo) DO NOTHING
+        """,
+        (period, user_id, status),
+    )
+    row = connection.execute(
+        "SELECT id FROM periodos_cierre WHERE nombre_periodo = ?", (period,)
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"No se pudo obtener el registro del período {period}.")
+    return int(row["id"])
+
+
+def _snapshot_closed_fichas(
+    connection: DatabaseConnection,
+    period_id: int,
+    where_clause: str,
+    values: tuple[Any, ...],
+) -> int:
+    result = connection.execute(
+        f"""
+        UPDATE fichas
+        SET periodo_cierre_id = ?,
+            porcentaje_comision_cierre = porcentaje_comision,
+            importe_comision_cierre = importe_comision,
+            comision_liquidada_cierre = CASE
+                WHEN estado = 'APROBADA' THEN COALESCE(importe_comision, 0)
+                ELSE 0
+            END
+        WHERE {where_clause} AND periodo_cierre_id IS NULL
+        """,
+        (period_id, *values),
+    )
+    return max(result.rowcount, 0)
+
+
 app.jinja_env.filters["ars"] = format_ars
 
 
@@ -581,10 +773,17 @@ def _dict_ficha(row: Any) -> dict[str, Any]:
     ficha["estado"] = str(ficha.get("estado") or "PENDIENTE").upper()
     ficha["nombre_afiliado"] = ficha.get("cliente_nombre") or ""
     ficha["cuil_afiliado"] = ficha.get("cuil") or ""
+    if ficha.get("importe_comision_cierre") is not None:
+        ficha["importe_comision"] = ficha["importe_comision_cierre"]
+    if ficha.get("porcentaje_comision_cierre") is not None:
+        ficha["porcentaje_comision"] = ficha["porcentaje_comision_cierre"]
     ficha["monto_comision"] = ficha.get("importe_comision") or 0
-    ficha["comision_a_liquidar"] = (
-        ficha["monto_comision"] if ficha["estado"] == "APROBADA" else 0
-    )
+    if ficha.get("comision_liquidada_cierre") is not None:
+        ficha["comision_a_liquidar"] = ficha["comision_liquidada_cierre"]
+    else:
+        ficha["comision_a_liquidar"] = (
+            ficha["monto_comision"] if ficha["estado"] == "APROBADA" else 0
+        )
     ficha["aporte"] = ficha.get("aporte") or 0
     ficha["porcentaje_comision"] = ficha.get("porcentaje_comision") or 0
     ficha["fecha_creacion"] = ficha.get("fecha_carga") or ""
@@ -699,11 +898,9 @@ def _password_matches(stored_password: str, supplied_password: str) -> bool:
     if not stored_password:
         return False
     try:
-        if check_password_hash(stored_password, supplied_password):
-            return True
+        return check_password_hash(stored_password, supplied_password)
     except (ValueError, TypeError):
-        pass
-    return hmac.compare_digest(stored_password, supplied_password)
+        return False
 
 
 @app.get("/")
@@ -727,14 +924,14 @@ def login() -> Any:
     with db_connection() as connection:
         user = connection.execute(
             """
-            SELECT id, username, password, rol, nombre_completo
+            SELECT id, username, password_hash, rol, nombre_completo
             FROM usuarios
             WHERE LOWER(username) = LOWER(?) OR LOWER(COALESCE(email, '')) = LOWER(?)
             LIMIT 1
             """,
             (identity, identity),
         ).fetchone()
-    if user is None or not _password_matches(user["password"] or "", password):
+    if user is None or not _password_matches(user["password_hash"] or "", password):
         return render_template("login.html", error="Usuario o contraseña incorrectos."), 401
 
     if user["rol"] == "asesor":
@@ -886,10 +1083,14 @@ def admin_legacy() -> Any:
 def _change_ficha_state(ficha_id: int, state: str) -> Any:
     with db_connection() as connection:
         ficha = connection.execute(
-            "SELECT periodo, prepaga FROM fichas WHERE id = ?", (ficha_id,)
+            "SELECT periodo, prepaga, periodo_cierre_id FROM fichas WHERE id = ?",
+            (ficha_id,),
         ).fetchone()
         if ficha is None:
             abort(404)
+        if ficha["periodo_cierre_id"] is not None:
+            flash("No se puede modificar una ficha de un período cerrado.")
+            return redirect(url_for("admin_dashboard", **request.args.to_dict()))
         closed = connection.execute(
             """
             SELECT 1 FROM cierres_periodo WHERE periodo = ?
@@ -948,12 +1149,27 @@ def cerrar_periodo() -> Any:
             ).fetchone()
             if existing:
                 abort(409, description="El período de esa prepaga ya está cerrado.")
+            period_id = _ensure_period_record(connection, requested_period)
             connection.execute(
                 """
                 INSERT INTO cierres_prepaga (periodo, prepaga, cerrado_por)
                 VALUES (?, ?, ?)
                 """,
                 (requested_period, requested_prepaga, session["user_id"]),
+            )
+            _snapshot_closed_fichas(
+                connection,
+                period_id,
+                "periodo = ? AND prepaga = ?",
+                (requested_period, requested_prepaga),
+            )
+            connection.execute(
+                """
+                UPDATE periodos_cierre
+                SET fecha_cierre = CURRENT_TIMESTAMP, usuario_cierre_id = ?
+                WHERE id = ?
+                """,
+                (session["user_id"], period_id),
             )
             next_period = _month_after(requested_period)
             flash(
@@ -974,6 +1190,7 @@ def cerrar_periodo() -> Any:
             abort(400, description="El período a cerrar no es válido.")
         if requested_period != active_period:
             abort(400, description="Solo se puede cerrar el período activo.")
+        period_id = _ensure_period_record(connection, requested_period)
         brands = [
             row["prepaga"]
             for row in connection.execute(
@@ -983,26 +1200,43 @@ def cerrar_periodo() -> Any:
         ]
         for brand in brands:
             brand_period = _active_period(connection, brand)
-            if connection.execute(
+            existing_brand_close = connection.execute(
                 "SELECT 1 FROM cierres_prepaga WHERE periodo = ? AND prepaga = ?",
                 (brand_period, brand),
-            ).fetchone():
-                continue
-            connection.execute(
-                """
-                INSERT INTO cierres_prepaga (periodo, prepaga, cerrado_por)
-                VALUES (?, ?, ?)
-                """,
-                (brand_period, brand, session["user_id"]),
+            ).fetchone()
+            if existing_brand_close is None:
+                connection.execute(
+                    """
+                    INSERT INTO cierres_prepaga (periodo, prepaga, cerrado_por)
+                    VALUES (?, ?, ?)
+                    """,
+                    (brand_period, brand, session["user_id"]),
+                )
+            _snapshot_closed_fichas(
+                connection,
+                period_id,
+                "periodo = ? AND prepaga = ?",
+                (brand_period, brand),
             )
-        if not brands:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO cierres_periodo (periodo, cerrado_por)
-                VALUES (?, ?)
-                """,
-                (requested_period, session["user_id"]),
-            )
+        connection.execute(
+            """
+            INSERT INTO cierres_periodo (periodo, cerrado_por)
+            VALUES (?, ?)
+            ON CONFLICT (periodo) DO NOTHING
+            """,
+            (requested_period, session["user_id"]),
+        )
+        connection.execute(
+            """
+            UPDATE periodos_cierre
+            SET estado = 'cerrado', fecha_cierre = CURRENT_TIMESTAMP,
+                usuario_cierre_id = ?
+            WHERE id = ?
+            """,
+            (session["user_id"], period_id),
+        )
+        next_active_period = _active_period(connection)
+        _ensure_period_record(connection, next_active_period)
         flash("Período activo cerrado para todas las prepagas.")
     return redirect(url_for("admin_dashboard", periodo="activo"))
 
@@ -1035,6 +1269,12 @@ def _selected_fichas_for_export() -> list[dict[str, Any]]:
     return [_dict_ficha(row) for row in rows]
 
 
+def _csv_safe_cell(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 @app.get("/exportar-excel")
 @admin_required
 def exportar_excel() -> Response:
@@ -1060,7 +1300,8 @@ def exportar_excel() -> Response:
         amount = Decimal(str(ficha["importe_comision"] or 0))
         payable = amount if ficha["estado"] == "APROBADA" else Decimal(0)
         writer.writerow(
-            [
+            _csv_safe_cell(value)
+            for value in [
                 ficha["id"],
                 ficha["periodo"],
                 ficha["fecha_carga"],
@@ -1127,15 +1368,28 @@ def _advisor_dashboard_data(
                     "importe_formateado": format_ars(amount),
                 }
             )
+        active_ficha_periods = [
+            (brand, _active_period(connection, brand)) for brand in brands
+        ]
+        active_ficha_filter = " OR ".join(
+            "(f.prepaga = ? AND f.periodo = ?)" for _ in active_ficha_periods
+        ) or "1 = 0"
         fichas = connection.execute(
-            """
+            f"""
             SELECT f.*, u.nombre_completo
             FROM fichas AS f
             LEFT JOIN usuarios AS u ON u.id = f.asesor_id
-            WHERE f.asesor_id = ?
+            WHERE f.asesor_id = ? AND ({active_ficha_filter})
             ORDER BY f.fecha_carga DESC, f.id DESC
             """,
-            (advisor_id,),
+            (
+                advisor_id,
+                *[
+                    value
+                    for active_period in active_ficha_periods
+                    for value in active_period
+                ],
+            ),
         ).fetchall()
     return [_dict_ficha(row) for row in fichas], summaries, grand_total
 
@@ -1175,6 +1429,142 @@ def asesor_dashboard_page() -> Any:
         nombre=session.get("nombre", ""),
         es_admin=False,
         route="dashboard",
+    )
+
+
+@app.get("/historial-liquidaciones")
+@login_required
+def historial_liquidaciones() -> Any:
+    role = session.get("rol")
+    if role not in {"admin", "asesor"}:
+        abort(403)
+    selected_period_id = request.args.get("periodo_id", "").strip()
+    selected_advisor_id = request.args.get("asesor_id", "").strip()
+    prepaga = request.args.get("prepaga", "").strip()
+    if role == "asesor":
+        advisor_id = int(session["user_id"])
+        selected_advisor_id = str(advisor_id)
+    elif selected_advisor_id:
+        if not selected_advisor_id.isdigit() or int(selected_advisor_id) < 1:
+            abort(400, description="El asesor seleccionado no es válido.")
+        advisor_id = int(selected_advisor_id)
+    else:
+        advisor_id = None
+
+    with db_connection() as connection:
+        periods = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT id, nombre_periodo, fecha_cierre
+                FROM periodos_cierre
+                WHERE estado = 'cerrado'
+                   OR EXISTS (
+                        SELECT 1 FROM cierres_prepaga
+                        WHERE cierres_prepaga.periodo =
+                              periodos_cierre.nombre_periodo
+                   )
+                ORDER BY nombre_periodo DESC
+                """
+            )
+        ]
+        advisors = (
+            [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT id, username, nombre_completo FROM usuarios
+                    WHERE rol = 'asesor'
+                    ORDER BY LOWER(nombre_completo), id
+                    """
+                )
+            ]
+            if role == "admin"
+            else []
+        )
+        selected_period = None
+        fichas: list[dict[str, Any]] = []
+        total_liquidado = Decimal(0)
+        total_comision = Decimal(0)
+        prepaga_options: list[str] = []
+        if selected_period_id:
+            if not selected_period_id.isdigit() or int(selected_period_id) < 1:
+                abort(400, description="El período seleccionado no es válido.")
+            selected_period = next(
+                (
+                    period
+                    for period in periods
+                    if int(period["id"]) == int(selected_period_id)
+                ),
+                None,
+            )
+            if selected_period is None:
+                abort(404, description="El período cerrado no existe.")
+            clauses = ["f.periodo_cierre_id = ?"]
+            values: list[Any] = [int(selected_period_id)]
+            if advisor_id is not None:
+                clauses.append("f.asesor_id = ?")
+                values.append(advisor_id)
+            if prepaga:
+                clauses.append("f.prepaga = ?")
+                values.append(prepaga)
+            where_clause, query_values = _query_filters(clauses, values)
+            rows = connection.execute(
+                f"""
+                SELECT f.*, u.nombre_completo
+                FROM fichas AS f
+                LEFT JOIN usuarios AS u ON u.id = f.asesor_id
+                {where_clause}
+                ORDER BY LOWER(f.prepaga), f.fecha_carga DESC, f.id DESC
+                """,
+                query_values,
+            ).fetchall()
+            fichas = [_dict_ficha(row) for row in rows]
+            totals = connection.execute(
+                f"""
+                SELECT SUM(COALESCE(f.comision_liquidada_cierre, 0)) AS liquidado,
+                       SUM(COALESCE(f.importe_comision_cierre, 0)) AS comision
+                FROM fichas AS f
+                {where_clause}
+                """,
+                query_values,
+            ).fetchone()
+            total_liquidado = Decimal(str(totals["liquidado"] or 0))
+            total_comision = Decimal(str(totals["comision"] or 0))
+            brand_clauses = ["periodo_cierre_id = ?"]
+            brand_values: list[Any] = [int(selected_period_id)]
+            if advisor_id is not None:
+                brand_clauses.append("asesor_id = ?")
+                brand_values.append(advisor_id)
+            brand_where, brand_query_values = _query_filters(
+                brand_clauses, brand_values
+            )
+            prepaga_options = [
+                row["prepaga"]
+                for row in connection.execute(
+                    f"""
+                    SELECT DISTINCT prepaga FROM fichas {brand_where}
+                    ORDER BY LOWER(prepaga)
+                    """,
+                    brand_query_values,
+                )
+                if row["prepaga"]
+            ]
+    return render_template(
+        "historial_liquidaciones.html",
+        periodos=periods,
+        periodo_seleccionado=selected_period,
+        periodo_id_actual=selected_period_id,
+        asesores=advisors,
+        asesor_id_actual=selected_advisor_id,
+        prepagas=prepaga_options,
+        prepaga_actual=prepaga,
+        fichas=fichas,
+        total_liquidado=total_liquidado,
+        total_comision=total_comision,
+        es_admin=role == "admin",
+        nombre=session.get("nombre", ""),
+        route="historial-liquidaciones",
     )
 
 
@@ -1348,7 +1738,6 @@ def crear_ficha() -> Any:
     prepaga = request.form.get("prepaga", "").strip()
     plan = request.form.get("plan", "").strip()
     empresa = (request.form.get("empresa") or "").strip()
-    clave_fiscal = (request.form.get("clave_fiscal") or "").strip()
     telefono = (request.form.get("telefono") or "").strip()
     grupo_familiar = request.form.get("grupo_familiar") or "Sin especificar"
     raw_salary = request.form.get("sueldo_bruto", "")
@@ -1380,10 +1769,10 @@ def crear_ficha() -> Any:
                 INSERT INTO fichas (
                     asesor_id, cliente_nombre, cuil, prepaga, plan,
                     importe_comision, estado, periodo, fecha_carga,
-                    nombre_afiliado, cuil_afiliado, empresa, clave_fiscal,
-                    telefono, grupo_familiar, sueldo_bruto, aporte,
+                    nombre_afiliado, cuil_afiliado, empresa, telefono,
+                    grupo_familiar, sueldo_bruto, aporte,
                     porcentaje_comision, fecha_creacion
-                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session["user_id"],
@@ -1397,7 +1786,6 @@ def crear_ficha() -> Any:
                     client_name,
                     cuil,
                     empresa,
-                    clave_fiscal,
                     telefono,
                     grupo_familiar,
                     float(salary),
@@ -1421,6 +1809,12 @@ def crear_ficha() -> Any:
 )
 def limpiar_db_pruebas(confirmar: bool) -> None:
     """Limpia datos de prueba y restablece las cuentas a la clave temporal configurada."""
+    reset_password = os.environ.get("RESET_PASSWORD")
+    if not reset_password:
+        raise click.ClickException(
+            "Falta definir la variable de entorno RESET_PASSWORD para restablecer "
+            "las contraseñas."
+        )
     if not confirmar:
         raise click.ClickException(
             "Operación cancelada. Vuelve a ejecutar con --confirmar para "
@@ -1431,7 +1825,7 @@ def limpiar_db_pruebas(confirmar: bool) -> None:
         user_columns = _columns(connection, "usuarios")
         users = connection.execute("SELECT id FROM usuarios ORDER BY id").fetchall()
         for user in users:
-            password_hash = generate_password_hash(RESET_PASSWORD)
+            password_hash = generate_password_hash(reset_password)
             assignments = ["password = ?"]
             parameters: list[Any] = [password_hash]
             if "password_hash" in user_columns:

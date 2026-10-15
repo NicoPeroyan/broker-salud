@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broker de Salud - Asesor</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -477,6 +477,7 @@
                             <li><a href="/asesor-dashboard" class="sidebar-link {% if route == 'dashboard' %}active{% endif %}"><span>Mi Dashboard</span></a></li>
                             <li><a href="/mis-fichas" class="sidebar-link {% if route == 'mis-fichas' %}active{% endif %}"><span>Mis Fichas</span></a></li>
                             <li><a href="/cargar-ficha" class="sidebar-link {% if route == 'cargar-ficha' %}active{% endif %}"><span>Cargar Ficha</span></a></li>
+                            <li><a href="{{ url_for('historial_liquidaciones') }}" class="sidebar-link {% if route == 'historial-liquidaciones' %}active{% endif %}"><span>Historial de Liquidaciones</span></a></li>
                         </ul>
                     </nav>
                     <div class="drawer-user">Hola, {{ nombre }}</div>
@@ -537,6 +538,12 @@
                                 <circle cx="12" cy="12" r="3"/>
                             </svg>
                             <span>Cargar Ficha</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('historial_liquidaciones') }}"
+                           class="sidebar-link {% if route == 'historial-liquidaciones' %}active{% endif %}">
+                            <span>Historial de Liquidaciones</span>
                         </a>
                     </li>
 

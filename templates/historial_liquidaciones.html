@@ -1,0 +1,124 @@
+{% extends "base_admin.html" if es_admin else "base_asesor.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h2 class="page-title">Historial de Liquidaciones</h2>
+
+    <section class="card mb-6">
+        <form method="GET" action="{{ url_for('historial_liquidaciones') }}"
+              class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+            <div>
+                <label class="form-label" for="periodo_id">Período cerrado</label>
+                <select class="form-select" id="periodo_id" name="periodo_id" required>
+                    <option value="">Seleccionar período</option>
+                    {% for periodo in periodos %}
+                        <option value="{{ periodo.id }}"
+                                {% if periodo_id_actual == periodo.id|string %}selected{% endif %}>
+                            {{ periodo.nombre_periodo }} — {{ periodo.fecha_cierre }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if es_admin %}
+                <div>
+                    <label class="form-label" for="asesor_id">Asesor</label>
+                    <select class="form-select" id="asesor_id" name="asesor_id">
+                        <option value="">Todos</option>
+                        {% for asesor in asesores %}
+                            <option value="{{ asesor.id }}"
+                                    {% if asesor_id_actual == asesor.id|string %}selected{% endif %}>
+                                {{ asesor.nombre_completo or asesor.username }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+            <div>
+                <label class="form-label" for="prepaga">Prepaga</label>
+                <select class="form-select" id="prepaga" name="prepaga">
+                    <option value="">Todas</option>
+                    {% for prepaga in prepagas %}
+                        <option value="{{ prepaga }}"
+                                {% if prepaga_actual == prepaga %}selected{% endif %}>
+                            {{ prepaga }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="btn btn-primary w-full">Consultar historial</button>
+            </div>
+        </form>
+    </section>
+
+    {% if periodo_seleccionado %}
+        <section class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6"
+                 aria-label="Totales del período liquidado">
+            <article class="card text-center">
+                <div class="text-xs text-[var(--muted)]">Comisión calculada congelada</div>
+                <div class="text-2xl font-bold">{{ total_comision|ars(2) }}</div>
+            </article>
+            <article class="card text-center">
+                <div class="text-xs text-[var(--muted)]">Total liquidado al cierre</div>
+                <div class="text-2xl font-bold text-[var(--accent)]">
+                    {{ total_liquidado|ars(2) }}
+                </div>
+            </article>
+        </section>
+
+        <section class="card">
+            <h3 class="font-semibold mb-4">
+                Fichas del período {{ periodo_seleccionado.nombre_periodo }}
+            </h3>
+            {% if fichas %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                {% if es_admin %}<th>Asesor</th>{% endif %}
+                                <th>Cliente</th>
+                                <th>CUIL</th>
+                                <th>Prepaga</th>
+                                <th>Plan</th>
+                                <th>Comisión congelada</th>
+                                <th>Porcentaje congelado</th>
+                                <th>Liquidado al cierre</th>
+                                <th>Estado</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ficha in fichas %}
+                                <tr>
+                                    {% if es_admin %}<td>{{ ficha.asesor_nombre }}</td>{% endif %}
+                                    <td>{{ ficha.cliente_nombre }}</td>
+                                    <td>{{ ficha.cuil }}</td>
+                                    <td><span class="prepaga-badge">{{ ficha.prepaga }}</span></td>
+                                    <td>{{ ficha.plan or 'N/A' }}</td>
+                                    <td>{{ ficha.importe_comision|ars(2) }}</td>
+                                    <td>{{ ficha.porcentaje_comision }}%</td>
+                                    <td>{{ ficha.comision_a_liquidar|ars(2) }}</td>
+                                    <td>
+                                        <span class="status-badge {{ ficha.estado|lower }}">
+                                            {{ ficha.estado }}
+                                        </span>
+                                    </td>
+                                    <td>{{ ficha.fecha_carga or '-' }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-[var(--muted)] text-center py-8">
+                    No hay fichas para los filtros seleccionados.
+                </p>
+            {% endif %}
+        </section>
+    {% else %}
+        <p class="text-[var(--muted)] text-center py-8">
+            Selecciona un período cerrado para consultar su liquidación.
+        </p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -22,7 +22,6 @@
                             <th>Afiliado</th>
                             <th>CUIL</th>
                             <th>Empresa</th>
-                            <th>Clave Fiscal</th>
                             <th>Teléfono</th>
                             <th>Grupo Familiar</th>
                             <th>Sueldo Bruto</th>
@@ -40,7 +39,6 @@
                             <td>{{ ficha.nombre_afiliado }}</td>
                             <td>{{ ficha.cuil_afiliado }}</td>
                             <td>{{ ficha.empresa or 'N/A' }}</td>
-                            <td>{{ ficha.clave_fiscal or 'N/A' }}</td>
                             <td>{{ ficha.telefono or 'N/A' }}</td>
                             <td>{{ ficha.grupo_familiar }}</td>
                             <td>{{ ficha.sueldo_bruto|ars(2) }}</td>
