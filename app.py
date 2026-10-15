@@ -1455,47 +1455,71 @@ def login() -> Any:
 
 
 @app.cli.command("crear-superadmin")
-def crear_superadmin() -> None:
+@click.option(
+    "--confirmar",
+    is_flag=True,
+    help="Confirma la creación o actualización de la cuenta SuperAdmin.",
+)
+def crear_superadmin(confirmar: bool) -> None:
     """Crea o actualiza el SuperAdmin usando credenciales entregadas por entorno."""
     username = os.environ.get("SUPERADMIN_USERNAME", "").strip()
     password = os.environ.get("SUPERADMIN_PASSWORD", "")
+    if not confirmar:
+        raise click.ClickException(
+            "Operación cancelada. Vuelve a ejecutar con --confirmar para "
+            "actualizar las credenciales SuperAdmin."
+        )
     if not username or len(password) < 12:
         raise click.ClickException(
             "Define SUPERADMIN_USERNAME y SUPERADMIN_PASSWORD (mínimo 12 "
             "caracteres) en el entorno antes de crear el SuperAdmin."
         )
+    if "@" not in username:
+        raise click.ClickException(
+            "SUPERADMIN_USERNAME debe ser la dirección de correo de la cuenta."
+        )
     with db_connection() as connection:
-        existing = connection.execute(
+        existing_users = connection.execute(
             """
             SELECT id FROM usuarios
             WHERE LOWER(username) = LOWER(?) OR LOWER(COALESCE(email, '')) = LOWER(?)
-            LIMIT 1
             """,
             (username, username),
-        ).fetchone()
+        ).fetchall()
+        if len(existing_users) > 1:
+            raise click.ClickException(
+                "La cuenta indicada coincide con más de un usuario; "
+                "resuelve el conflicto manualmente antes de continuar."
+            )
         password_hash = generate_password_hash(password)
-        if existing:
+        if existing_users:
             connection.execute(
                 """
                 UPDATE usuarios
-                SET username = ?, password = '', password_hash = ?,
-                    rol = 'superadmin', es_superadmin = TRUE, agencia_id = NULL
+                SET username = ?, email = ?, password = '',
+                    password_hash = ?, rol = 'superadmin',
+                    nombre_completo = 'SuperAdmin', nombre = 'SuperAdmin',
+                    es_superadmin = TRUE, agencia_id = NULL
                 WHERE id = ?
                 """,
-                (username, password_hash, existing["id"]),
+                (username, username, password_hash, existing_users[0]["id"]),
             )
         else:
             connection.execute(
                 """
                 INSERT INTO usuarios (
                     username, email, password, password_hash, rol,
-                    nombre_completo, es_superadmin, agencia_id
-                ) VALUES (?, ?, '', ?, 'superadmin', ?, TRUE, NULL)
+                    nombre_completo, nombre, es_superadmin, agencia_id
+                ) VALUES (?, ?, '', ?, 'superadmin', 'SuperAdmin',
+                          'SuperAdmin', TRUE, NULL)
                 """,
                 (username, username if "@" in username else None,
-                 password_hash, username),
+                 password_hash),
             )
-    click.echo("Cuenta SuperAdmin creada o actualizada correctamente.")
+    click.echo(
+        "Transacción completada: cuenta SuperAdmin creada o actualizada "
+        "correctamente."
+    )
 
 
 @app.route("/superadmin", methods=["GET", "POST"])
