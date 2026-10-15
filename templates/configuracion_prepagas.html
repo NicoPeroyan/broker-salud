@@ -16,7 +16,7 @@
             </div>
             <div>
                 <label class="form-label" for="porcentaje_comision">Comisión (%)</label>
-                <input id="porcentaje_comision" type="number" name="porcentaje_comision" class="form-input" min="0" max="100" step="0.01" required>
+                <input id="porcentaje_comision" type="number" name="porcentaje_comision" class="form-input" min="0" step="1" required>
             </div>
             <button type="submit" class="btn btn-primary mb-4">Agregar prepaga</button>
         </form>
@@ -43,7 +43,7 @@
                                     <form method="POST" action="{{ url_for('actualizar_porcentaje_prepaga', config_id=prepaga.id) }}" class="flex items-center gap-2">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <label class="sr-only" for="porcentaje-{{ prepaga.id }}">Comisión de {{ prepaga.prepaga }} (%)</label>
-                                        <input id="porcentaje-{{ prepaga.id }}" type="number" name="porcentaje_comision" class="form-input mb-0 w-28" min="0" max="100" step="0.01" value="{{ prepaga.porcentaje_comision }}" required>
+                                        <input id="porcentaje-{{ prepaga.id }}" type="number" name="porcentaje_comision" class="form-input mb-0 w-28" min="0" step="1" value="{{ prepaga.porcentaje_comision }}" required>
                                         <span>%</span>
                                         <button type="submit" class="btn btn-secondary">Guardar</button>
                                     </form>

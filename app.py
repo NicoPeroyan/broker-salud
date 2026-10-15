@@ -240,14 +240,15 @@ def init_db() -> None:
                 id {user_id_type},
                 usuario_id INTEGER NOT NULL,
                 prepaga TEXT NOT NULL,
-                porcentaje_comision REAL NOT NULL DEFAULT 0
-                    CHECK (porcentaje_comision >= 0 AND porcentaje_comision <= 100),
+                porcentaje_comision INTEGER NOT NULL DEFAULT 0
+                    CHECK (porcentaje_comision >= 0),
                 activa BOOLEAN NOT NULL DEFAULT TRUE,
                 UNIQUE (usuario_id, prepaga),
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
             )
             """
         )
+        _migrate_prepaga_percentage(connection)
 
         for name, declaration in (
             ("username", "TEXT"),
@@ -419,6 +420,85 @@ def _ensure_default_prepagas(
             """,
             (user_id, prepaga),
         )
+
+
+def _migrate_prepaga_percentage(connection: DatabaseConnection) -> None:
+    if connection.is_postgres:
+        constraints = connection.execute(
+            """
+            SELECT c.conname AS constraint_name,
+                   pg_get_constraintdef(c.oid) AS check_clause
+            FROM pg_constraint AS c
+            JOIN pg_class AS t ON t.oid = c.conrelid
+            JOIN pg_namespace AS n ON n.oid = t.relnamespace
+            WHERE c.contype = 'c'
+              AND t.relname = 'prepagas_config'
+              AND n.nspname = current_schema()
+            """
+        ).fetchall()
+        for constraint in constraints:
+            check_clause = str(constraint["check_clause"])
+            if re.search(
+                r"porcentaje_comision\s*<=\s*\(?100\b",
+                check_clause,
+                flags=re.IGNORECASE,
+            ):
+                constraint_name = str(constraint["constraint_name"]).replace(
+                    '"', '""'
+                )
+                connection.execute(
+                    "ALTER TABLE prepagas_config DROP CONSTRAINT "
+                    f'"{constraint_name}"'
+                )
+        percentage_column = connection.execute(
+            """
+            SELECT data_type FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'prepagas_config'
+              AND column_name = 'porcentaje_comision'
+            """
+        ).fetchone()
+        if percentage_column["data_type"] != "integer":
+            connection.execute(
+                "ALTER TABLE prepagas_config ALTER COLUMN porcentaje_comision "
+                "TYPE INTEGER USING TRUNC(porcentaje_comision)::INTEGER"
+            )
+        return
+
+    table_sql = connection.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE type = 'table' AND name = 'prepagas_config'"
+    ).fetchone()["sql"]
+    if "porcentaje_comision REAL" not in table_sql and "<= 100" not in table_sql:
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE prepagas_config_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario_id INTEGER NOT NULL,
+            prepaga TEXT NOT NULL,
+            porcentaje_comision INTEGER NOT NULL DEFAULT 0
+                CHECK (porcentaje_comision >= 0),
+            activa BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE (usuario_id, prepaga),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO prepagas_config_migrated (
+            id, usuario_id, prepaga, porcentaje_comision, activa
+        )
+        SELECT id, usuario_id, prepaga, CAST(porcentaje_comision AS INTEGER), activa
+        FROM prepagas_config
+        """
+    )
+    connection.execute("DROP TABLE prepagas_config")
+    connection.execute(
+        "ALTER TABLE prepagas_config_migrated RENAME TO prepagas_config"
+    )
 
 
 def _month_after(period: str) -> str:
@@ -1143,11 +1223,11 @@ def _parse_amount(
     return amount
 
 
-def _parse_percentage(raw_value: str) -> Decimal:
-    percentage = _parse_amount(raw_value, "porcentaje de comisión")
-    if percentage > 100:
-        raise ValueError("El porcentaje de comisión no puede superar el 100%.")
-    return percentage
+def _parse_percentage(raw_value: str) -> int:
+    cleaned = raw_value.strip()
+    if not re.fullmatch(r"\d+", cleaned):
+        raise ValueError("El porcentaje de comisión debe ser un número entero.")
+    return int(cleaned)
 
 
 @app.route("/configuracion-prepagas", methods=["GET", "POST"])
@@ -1182,7 +1262,7 @@ def configuracion_prepagas() -> Any:
                         usuario_id, prepaga, porcentaje_comision, activa
                     ) VALUES (?, ?, ?, TRUE)
                     """,
-                    (user_id, prepaga, float(percentage)),
+                    (user_id, prepaga, percentage),
                 )
             flash("Prepaga agregada correctamente.")
         except ValueError as exc:
@@ -1225,7 +1305,7 @@ def actualizar_porcentaje_prepaga(config_id: int) -> Any:
                 SET porcentaje_comision = ?
                 WHERE id = ? AND usuario_id = ?
                 """,
-                (float(percentage), config_id, session["user_id"]),
+                (percentage, config_id, session["user_id"]),
             )
             if result.rowcount == 0:
                 abort(404)
