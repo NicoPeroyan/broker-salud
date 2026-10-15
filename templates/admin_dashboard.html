@@ -26,6 +26,9 @@
                         {{ asesor.nombre_completo or asesor.username }}
                     </a>
                 {% endfor %}
+                <a class="sidebar-link" href="{{ url_for('configuracion_prepagas') }}">
+                    Configuración de Prepagas
+                </a>
             </nav>
         </aside>
 
