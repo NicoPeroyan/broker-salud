@@ -483,12 +483,35 @@
                         <ul class="sidebar-links">
                             <li><a href="/" class="sidebar-link"><span>Inicio</span></a></li>
                             <li><a href="/admin-dashboard" class="sidebar-link active"><span>Administración</span></a></li>
-                            {% if es_admin %}
-                            <li><a href="/configuracion-prepagas" class="sidebar-link {% if route == 'configuracion-prepagas' %}active{% endif %}"><span>Configuración</span></a></li>
-                            {% endif %}
                         </ul>
                     </nav>
                     <div class="drawer-user">Usuario: {{ nombre }} (Admin)</div>
+                    {% if route == 'admin' %}
+                    <nav class="mt-4" aria-label="Liquidación por asesor">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] mb-2">Liquidación por asesor</h3>
+                        <ul class="space-y-1">
+                            <li>
+                                <a class="sidebar-link {% if asesor_id_actual == 'todos' %}active{% endif %}"
+                                   href="{{ url_for('admin_dashboard', asesor_id='todos', periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                                    Todos los asesores
+                                </a>
+                            </li>
+                            {% for asesor in asesores %}
+                                <li>
+                                    <a class="sidebar-link {% if asesor_seleccionado and asesor_seleccionado.id == asesor.id %}active{% endif %}"
+                                       href="{{ url_for('admin_dashboard', asesor_id=asesor.id, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                                        {{ asesor.nombre_completo or asesor.username }}
+                                    </a>
+                                </li>
+                            {% endfor %}
+                            <li>
+                                <a class="sidebar-link" href="{{ url_for('configuracion_prepagas') }}">
+                                    Configuración de Prepagas
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    {% endif %}
                 </aside>
             </details>
             <div class="topbar-actions">
@@ -540,15 +563,6 @@
                             <span>Administración</span>
                         </a>
                     </li>
-                    <li>
-                        <a href="/configuracion-prepagas" class="sidebar-link {% if route == 'configuracion-prepagas' %}active{% endif %}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="3"/>
-                                <path d="M19.4 15a1.7 1.7 0 00.34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 00-1.75.98l-.03.08h-3.4l-.03-.08a1.7 1.7 0 00-1.75-.98l-.08.02-1.7-2.94.06-.06A1.7 1.7 0 009.6 15l-.08-.03v-3.4l.08-.03a1.7 1.7 0 00.98-1.75l-.02-.08 2.94-1.7.06.06a1.7 1.7 0 001.88.34l.03-.08h3.4l.03.08a1.7 1.7 0 00.98 1.75l.08.03v3.4z"/>
-                            </svg>
-                            <span>Configuración</span>
-                        </a>
-                    </li>
                     {% endif %}
                 </ul>
                 </nav>
@@ -557,6 +571,32 @@
             <div class="user-area mt-6 text-center">
                 <span class="text-xs text-[var(--muted)]">Usuario: {{ nombre }} (Admin)</span>
             </div>
+            {% if route == 'admin' %}
+            <nav class="mt-6" aria-label="Liquidación por asesor">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] mb-2">Liquidación por asesor</h3>
+                <ul class="space-y-1">
+                    <li>
+                        <a class="sidebar-link {% if asesor_id_actual == 'todos' %}active{% endif %}"
+                           href="{{ url_for('admin_dashboard', asesor_id='todos', periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                            Todos los asesores
+                        </a>
+                    </li>
+                    {% for asesor in asesores %}
+                        <li>
+                            <a class="sidebar-link {% if asesor_seleccionado and asesor_seleccionado.id == asesor.id %}active{% endif %}"
+                               href="{{ url_for('admin_dashboard', asesor_id=asesor.id, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                                {{ asesor.nombre_completo or asesor.username }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                    <li>
+                        <a class="sidebar-link" href="{{ url_for('configuracion_prepagas') }}">
+                            Configuración de Prepagas
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
         </div>
         
         <!-- Main Content -->

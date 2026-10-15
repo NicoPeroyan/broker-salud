@@ -12,78 +12,57 @@
         {% endif %}
     {% endwith %}
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-        <aside class="card">
-            <h3 class="font-semibold mb-3">Liquidación por asesor</h3>
-            <nav class="space-y-1" aria-label="Filtrar por asesor">
-                <a class="sidebar-link {% if asesor_id_actual == 'todos' %}active{% endif %}"
-                   href="{{ url_for('admin_dashboard', asesor_id='todos', periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
-                    Todos los asesores
-                </a>
-                {% for asesor in asesores %}
-                    <a class="sidebar-link {% if asesor_seleccionado and asesor_seleccionado.id == asesor.id %}active{% endif %}"
-                       href="{{ url_for('admin_dashboard', asesor_id=asesor.id, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
-                        {{ asesor.nombre_completo or asesor.username }}
-                    </a>
-                {% endfor %}
-                <a class="sidebar-link" href="{{ url_for('configuracion_prepagas') }}">
-                    Configuración de Prepagas
-                </a>
-            </nav>
-        </aside>
-
-        <section class="card lg:col-span-3">
-            <h3 class="font-semibold mb-4">Filtros de fichas</h3>
-            <form method="GET" action="{{ url_for('admin_dashboard') }}"
-                  class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-                <input type="hidden" name="asesor_id" value="{{ asesor_id_actual }}">
-                <div>
-                    <label class="form-label" for="periodo">Período</label>
-                    <select class="form-select" id="periodo" name="periodo">
-                        <option value="activo" {% if periodo_actual == 'activo' %}selected{% endif %}>
-                            Activo por prepaga
-                        </option>
-                        <option value="todos" {% if periodo_actual == 'todos' %}selected{% endif %}>Todos los períodos</option>
-                        {% for periodo in periodos %}
-                            <option value="{{ periodo }}" {% if periodo_actual == periodo %}selected{% endif %}>{{ periodo }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="prepaga">Prepaga</label>
-                    <select class="form-select" id="prepaga" name="prepaga">
-                        <option value="">Todas</option>
-                        {% for prepaga in prepagas %}
-                            <option value="{{ prepaga }}" {% if prepaga_actual == prepaga %}selected{% endif %}>{{ prepaga }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label" for="q">Cliente o CUIL</label>
-                    <input class="form-input" id="q" type="search" name="q"
-                           value="{{ q_actual }}" placeholder="Nombre o CUIL">
-                </div>
-                <div class="flex items-end">
-                    <button type="submit" class="btn btn-primary w-full">Aplicar filtros</button>
-                </div>
-            </form>
-
-            <div class="action-row flex flex-wrap gap-3 mt-5">
-                <a class="btn btn-secondary"
-                   href="{{ url_for('exportar_excel', asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
-                    Descargar CSV
-                </a>
-                <form method="POST" action="{{ url_for('cerrar_periodo') }}"
-                      onsubmit="return confirm('¿Cerrar los períodos activos de todas las prepagas?');">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="periodo" value="{{ periodo_operativo }}">
-                    <button class="btn btn-danger" type="submit">
-                        Cerrar período activo de todas las prepagas
-                    </button>
-                </form>
+    <section class="card mb-6">
+        <h3 class="font-semibold mb-4">Filtros de fichas</h3>
+        <form method="GET" action="{{ url_for('admin_dashboard') }}"
+              class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+            <input type="hidden" name="asesor_id" value="{{ asesor_id_actual }}">
+            <div>
+                <label class="form-label" for="periodo">Período</label>
+                <select class="form-select" id="periodo" name="periodo">
+                    <option value="activo" {% if periodo_actual == 'activo' %}selected{% endif %}>
+                        Activo por prepaga
+                    </option>
+                    <option value="todos" {% if periodo_actual == 'todos' %}selected{% endif %}>Todos los períodos</option>
+                    {% for periodo in periodos %}
+                        <option value="{{ periodo }}" {% if periodo_actual == periodo %}selected{% endif %}>{{ periodo }}</option>
+                    {% endfor %}
+                </select>
             </div>
-        </section>
-    </div>
+            <div>
+                <label class="form-label" for="prepaga">Prepaga</label>
+                <select class="form-select" id="prepaga" name="prepaga">
+                    <option value="">Todas</option>
+                    {% for prepaga in prepagas %}
+                        <option value="{{ prepaga }}" {% if prepaga_actual == prepaga %}selected{% endif %}>{{ prepaga }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="q">Cliente o CUIL</label>
+                <input class="form-input" id="q" type="search" name="q"
+                       value="{{ q_actual }}" placeholder="Nombre o CUIL">
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="btn btn-primary w-full">Aplicar filtros</button>
+            </div>
+        </form>
+
+        <div class="action-row flex flex-wrap gap-3 mt-5">
+            <a class="btn btn-secondary"
+               href="{{ url_for('exportar_excel', asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                Descargar CSV
+            </a>
+            <form method="POST" action="{{ url_for('cerrar_periodo') }}"
+                  onsubmit="return confirm('¿Cerrar los períodos activos de todas las prepagas?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="periodo" value="{{ periodo_operativo }}">
+                <button class="btn btn-danger" type="submit">
+                    Cerrar período activo de todas las prepagas
+                </button>
+            </form>
+        </div>
+    </section>
 
     <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6"
              aria-label="Comisiones aprobadas a liquidar">
