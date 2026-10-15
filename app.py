@@ -248,7 +248,7 @@ def _migrate_users_role_constraint(connection: DatabaseConnection) -> None:
             FROM pg_constraint AS c
             JOIN pg_class AS t ON t.oid = c.conrelid
             WHERE c.contype = 'c' AND t.relname = 'usuarios'
-              AND pg_get_constraintdef(c.oid) ILIKE '%rol%'
+              AND pg_get_constraintdef(c.oid) ILIKE '%%rol%%'
             """
         ).fetchall()
         if not any(
