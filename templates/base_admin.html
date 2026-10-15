@@ -486,7 +486,7 @@
     
     <div class="app-shell">
         <header class="topbar">
-            <a href="/admin-dashboard" class="topbar-brand">
+            <a href="{% if session.get('rol') == 'superadmin' %}{{ url_for('superadmin') }}{% else %}{{ url_for('admin_dashboard') }}{% endif %}" class="topbar-brand">
                 <span class="topbar-brand-mark" aria-hidden="true">B</span>
                 <span>BrokerSalud</span>
             </a>
@@ -500,12 +500,16 @@
                     </div>
                     <nav class="drawer-nav">
                         <ul class="sidebar-links">
-                            <li><a href="/" class="sidebar-link"><span>Inicio</span></a></li>
-                            <li><a href="/admin-dashboard" class="sidebar-link active"><span>Administración</span></a></li>
-                            <li><a href="{{ url_for('historial_liquidaciones') }}" class="sidebar-link {% if route == 'historial-liquidaciones' %}active{% endif %}"><span>Historial de Liquidaciones</span></a></li>
+                            {% if session.get('rol') == 'superadmin' %}
+                                <li><a href="{{ url_for('superadmin') }}" class="sidebar-link {% if route == 'superadmin' %}active{% endif %}"><span>Gestión de Agencias</span></a></li>
+                            {% else %}
+                                <li><a href="{{ url_for('admin_dashboard') }}" class="sidebar-link {% if route == 'admin' %}active{% endif %}"><span>Administración</span></a></li>
+                                <li><a href="{{ url_for('gestion_asesores') }}" class="sidebar-link {% if route == 'gestion-asesores' %}active{% endif %}"><span>Gestión de Asesores</span></a></li>
+                                <li><a href="{{ url_for('historial_liquidaciones') }}" class="sidebar-link {% if route == 'historial-liquidaciones' %}active{% endif %}"><span>Historial de Liquidaciones</span></a></li>
+                            {% endif %}
                         </ul>
                     </nav>
-                    <div class="drawer-user">Usuario: {{ nombre }} (Admin)</div>
+                    <div class="drawer-user">Usuario: {{ nombre }} ({{ 'SuperAdmin' if session.get('rol') == 'superadmin' else 'Admin' }})</div>
                     {% if route == 'admin' %}
                     <nav class="mt-4" aria-label="Liquidación por asesor">
                         <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] mb-2">Liquidación por asesor</h3>
@@ -535,7 +539,7 @@
                 </aside>
             </details>
             <div class="topbar-actions">
-                <span class="topbar-user">Usuario: {{ nombre }} (Admin)</span>
+                <span class="topbar-user">Usuario: {{ nombre }} ({{ 'SuperAdmin' if session.get('rol') == 'superadmin' else 'Admin' }})</span>
                 <form method="POST" action="{{ url_for('logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-secondary" aria-label="Cerrar sesión">Cerrar Sesión</button>
@@ -562,7 +566,7 @@
                 <nav class="sidebar-nav">
                 <ul class="sidebar-links space-y-2">
                     <li>
-                        <a href="/" class="sidebar-link {% if route == 'home' %}active{% endif %}">
+                        <a href="{% if session.get('rol') == 'superadmin' %}{{ url_for('superadmin') }}{% else %}{{ url_for('index') }}{% endif %}" class="sidebar-link {% if route == 'home' %}active{% endif %}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M3 4l9 7 9-7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
                                 <line x1="9" y1="22" x2="9" y2="12"/>
@@ -572,7 +576,13 @@
                         </a>
                     </li>
                     
-                    {% if es_admin %}
+                    {% if session.get('rol') == 'superadmin' %}
+                    <li>
+                        <a href="{{ url_for('superadmin') }}" class="sidebar-link {% if route == 'superadmin' %}active{% endif %}">
+                            <span>Gestión de Agencias</span>
+                        </a>
+                    </li>
+                    {% elif es_admin %}
                     <li>
                         <a href="/admin" class="sidebar-link active">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -583,19 +593,27 @@
                             <span>Administración</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="{{ url_for('gestion_asesores') }}"
+                           class="sidebar-link {% if route == 'gestion-asesores' %}active{% endif %}">
+                            <span>Gestión de Asesores</span>
+                        </a>
+                    </li>
                     {% endif %}
+                    {% if session.get('rol') != 'superadmin' %}
                     <li>
                         <a href="{{ url_for('historial_liquidaciones') }}"
                            class="sidebar-link {% if route == 'historial-liquidaciones' %}active{% endif %}">
                             <span>Historial de Liquidaciones</span>
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
                 </nav>
             </details>
             
             <div class="user-area mt-6 text-center">
-                <span class="text-xs text-[var(--muted)]">Usuario: {{ nombre }} (Admin)</span>
+                <span class="text-xs text-[var(--muted)]">Usuario: {{ nombre }} ({{ 'SuperAdmin' if session.get('rol') == 'superadmin' else 'Admin' }})</span>
             </div>
             {% if route == 'admin' %}
             <nav class="mt-6" aria-label="Liquidación por asesor">
@@ -618,6 +636,12 @@
                     <li>
                         <a class="sidebar-link" href="{{ url_for('configuracion_prepagas') }}">
                             Configuración de Prepagas
+                        </a>
+                    </li>
+                    <li>
+                        <a class="sidebar-link {% if route == 'gestion-asesores' %}active{% endif %}"
+                           href="{{ url_for('gestion_asesores') }}">
+                            Gestión de Asesores
                         </a>
                     </li>
                 </ul>

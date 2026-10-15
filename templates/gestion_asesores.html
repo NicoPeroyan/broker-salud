@@ -1,0 +1,64 @@
+{% extends "base_admin.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="page-title">Gestión de Asesores</h1>
+    <section class="card mb-6">
+        <h2 class="text-lg font-semibold mb-2">Agregar asesor a {{ agencia.nombre_agencia }}</h2>
+        <p class="text-sm text-[var(--muted)] mb-4">
+            El correo debe usar el dominio de tu agencia: <strong>@{{ agencia.dominio }}</strong>.
+        </p>
+        <form id="advisor-form" method="POST" action="{{ url_for('gestion_asesores') }}"
+              class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label">Nombre completo
+                <input class="form-input mt-2" name="nombre_completo" required maxlength="120">
+            </label>
+            <label class="form-label">Email del asesor
+                <input class="form-input mt-2" id="advisor-email" type="email" name="email"
+                       required placeholder="usuario@{{ agencia.dominio }}">
+            </label>
+            <label class="form-label">Contraseña inicial (12 caracteres mínimo)
+                <input class="form-input mt-2" type="password" name="password"
+                       required minlength="12" autocomplete="new-password">
+            </label>
+            <div class="flex items-end">
+                <button class="btn btn-primary w-full" type="submit">Crear asesor</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="text-lg font-semibold mb-4">Asesores de la agencia</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Nombre</th><th>Usuario</th><th>Fecha de alta</th></tr></thead>
+                <tbody>
+                    {% for asesor in asesores %}
+                    <tr>
+                        <td>{{ asesor.nombre_completo }}</td>
+                        <td>{{ asesor.username }}</td>
+                        <td>{{ asesor.fecha_creacion|fecha }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3">Todavía no hay asesores en esta agencia.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+<script>
+    (() => {
+        const email = document.getElementById("advisor-email");
+        const form = document.getElementById("advisor-form");
+        const domain = {{ agencia.dominio|tojson }};
+        const completeEmail = () => {
+            const value = email.value.trim();
+            if (value && !value.includes("@")) email.value = `${value}@${domain}`;
+        };
+        email.addEventListener("blur", completeEmail);
+        form.addEventListener("submit", completeEmail);
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base_admin.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="page-title">Gestión de Agencias</h1>
+
+    <section class="card mb-6">
+        <h2 class="text-lg font-semibold mb-4">Crear agencia y administrador</h2>
+        <form method="POST" action="{{ url_for('superadmin') }}"
+              class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="crear_agencia">
+            <label class="form-label">Nombre de la agencia
+                <input class="form-input mt-2" name="nombre_agencia" required maxlength="120">
+            </label>
+            <label class="form-label">Dominio
+                <input class="form-input mt-2" name="dominio" required
+                       placeholder="broker.com" pattern="(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}"
+                       title="Indica un dominio, por ejemplo broker.com">
+            </label>
+            <label class="form-label">Nombre del administrador
+                <input class="form-input mt-2" name="admin_nombre" required maxlength="120">
+            </label>
+            <label class="form-label">Email del administrador
+                <input class="form-input mt-2" type="email" name="admin_email" required
+                       placeholder="admin@broker.com">
+            </label>
+            <label class="form-label">Contraseña inicial (12 caracteres mínimo)
+                <input class="form-input mt-2" type="password" name="admin_password"
+                       required minlength="12" autocomplete="new-password">
+            </label>
+            <div class="flex items-end">
+                <button class="btn btn-primary w-full" type="submit">Crear agencia</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="text-lg font-semibold mb-4">Agencias registradas</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Agencia</th><th>Dominio</th><th>Estado</th>
+                        <th>Alta</th><th>Vencimiento</th><th>Usuarios</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for agencia in agencias %}
+                    <tr>
+                        <td>{{ agencia.nombre_agencia }}</td>
+                        <td>{{ agencia.dominio }}</td>
+                        <td>
+                            <span class="state-badge {{ 'active' if agencia.estado == 'activa' else 'closed' }}">
+                                {{ agencia.estado }}
+                            </span>
+                        </td>
+                        <td>{{ agencia.fecha_alta|fecha }}</td>
+                        <td>{{ agencia.proximo_vencimiento|fecha }}</td>
+                        <td>{{ agencia.usuarios_total }}</td>
+                        <td>
+                            <div class="flex flex-wrap gap-2">
+                                <form method="POST" action="{{ url_for('superadmin') }}"
+                                      {% if agencia.estado == 'activa' %}
+                                      data-confirm="Suspender esta agencia bloqueará el acceso de todos sus usuarios."
+                                      data-confirm-title="Suspender agencia"
+                                      {% endif %}>
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="agencia_id" value="{{ agencia.id }}">
+                                    <input type="hidden" name="action"
+                                           value="{{ 'activar' if agencia.estado == 'suspendida' else 'suspender' }}">
+                                    <button class="btn btn-secondary" type="submit">
+                                        {{ 'Activar' if agencia.estado == 'suspendida' else 'Suspender' }}
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('superadmin') }}"
+                                      class="flex items-center gap-2">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="agencia_id" value="{{ agencia.id }}">
+                                    <input type="hidden" name="action" value="extender">
+                                    <input class="form-input mb-0 w-24" type="number" name="dias"
+                                           min="1" max="3650" value="30" aria-label="Días a extender">
+                                    <button class="btn btn-primary" type="submit">Extender días</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7">No hay agencias registradas.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

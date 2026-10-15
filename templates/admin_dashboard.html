@@ -41,6 +41,9 @@
         </form>
 
         <div class="action-row flex flex-wrap gap-3 mt-5">
+            <a class="btn btn-secondary" href="{{ url_for('gestion_asesores') }}">
+                Gestión de Asesores
+            </a>
             <a class="btn btn-secondary"
                href="{{ url_for('exportar_excel', asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
                 Descargar CSV
