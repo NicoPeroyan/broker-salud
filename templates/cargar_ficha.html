@@ -18,7 +18,7 @@
                 
                 <div>
                     <label class="form-label">CUIL del Afiliado <span class="text-[var(--error)]">*</span></label>
-                    <input type="text" name="cuil_afiliado" class="form-input" required autocomplete="cc-number">
+                    <input type="text" name="cuil_afiliado" class="form-input" required autocomplete="cc-number" inputmode="numeric" pattern="(?:[0-9]{11}|[0-9]{2}-[0-9]{8}-[0-9])" placeholder="20-12345678-9">
                 </div>
 
                 <div>
@@ -33,7 +33,7 @@
                 
                 <div>
                     <label class="form-label">Cantidad del Grupo Familiar <span class="text-[var(--error)]">*</span></label>
-                    <input type="number" name="grupo_familiar" class="form-input" min="1" required>
+                    <input type="number" name="grupo_familiar" class="form-input" min="1" inputmode="numeric" required>
                 </div>
                 
                 <div>
@@ -70,7 +70,7 @@
             
             <div>
                 <label class="form-label">Aporte <span class="text-[var(--error)]">*</span></label>
-                <input type="number" name="aporte" class="form-input" min="0" step="any" required>
+                <input type="number" name="aporte" class="form-input" min="0" step="any" inputmode="decimal" required>
                 <p class="text-xs text-[var(--muted)] mt-1">La comisión se calculará automáticamente según el porcentaje vigente de la prepaga seleccionada.</p>
             </div>
             

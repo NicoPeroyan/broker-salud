@@ -719,6 +719,19 @@ def format_ars(value: Any, decimals: int = 0) -> str:
     return "$ " + rendered.replace(",", "_").replace(".", ",").replace("_", ".")
 
 
+def format_date(value: Any) -> str:
+    if not value:
+        return "-"
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = datetime.strptime(str(value), "%Y-%m-%d")
+        except ValueError:
+            return str(value)
+    return parsed.strftime("%d/%m/%Y")
+
+
 def _ensure_period_record(
     connection: DatabaseConnection,
     period: str,
@@ -766,6 +779,7 @@ def _snapshot_closed_fichas(
 
 
 app.jinja_env.filters["ars"] = format_ars
+app.jinja_env.filters["fecha"] = format_date
 
 
 def _dict_ficha(row: Any) -> dict[str, Any]:
@@ -890,7 +904,7 @@ def _session_user_is_admin() -> bool:
 def _require_prepaga_config_admin() -> Any | None:
     if _session_user_is_admin():
         return None
-    flash("No tienes permisos para acceder a esta sección")
+    flash("No tienes permisos para acceder a esta sección", "warning")
     return redirect(url_for("mis_fichas"))
 
 
@@ -1089,7 +1103,7 @@ def _change_ficha_state(ficha_id: int, state: str) -> Any:
         if ficha is None:
             abort(404)
         if ficha["periodo_cierre_id"] is not None:
-            flash("No se puede modificar una ficha de un período cerrado.")
+            flash("No se puede modificar una ficha de un período cerrado.", "warning")
             return redirect(url_for("admin_dashboard", **request.args.to_dict()))
         closed = connection.execute(
             """
@@ -1101,12 +1115,12 @@ def _change_ficha_state(ficha_id: int, state: str) -> Any:
             (ficha["periodo"], ficha["periodo"], ficha["prepaga"]),
         ).fetchone()
         if closed:
-            flash("No se puede modificar una ficha de un período cerrado.")
+            flash("No se puede modificar una ficha de un período cerrado.", "warning")
         else:
             connection.execute(
                 "UPDATE fichas SET estado = ? WHERE id = ?", (state, ficha_id)
             )
-            flash(f"Ficha {state.lower()} correctamente.")
+            flash(f"Ficha {state.lower()} correctamente.", "success")
     return redirect(url_for("admin_dashboard", **request.args.to_dict()))
 
 
@@ -1174,7 +1188,8 @@ def cerrar_periodo() -> Any:
             next_period = _month_after(requested_period)
             flash(
                 f"Período {requested_period} de {requested_prepaga} cerrado. "
-                f"El nuevo período activo para esa prepaga es {next_period}."
+                f"El nuevo período activo para esa prepaga es {next_period}.",
+                "success",
             )
             redirect_args = {
                 "periodo": "activo",
@@ -1237,7 +1252,7 @@ def cerrar_periodo() -> Any:
         )
         next_active_period = _active_period(connection)
         _ensure_period_record(connection, next_active_period)
-        flash("Período activo cerrado para todas las prepagas.")
+        flash("Período activo cerrado para todas las prepagas.", "success")
     return redirect(url_for("admin_dashboard", periodo="activo"))
 
 
@@ -1654,9 +1669,9 @@ def configuracion_prepagas() -> Any:
                     """,
                     (user_id, prepaga, percentage),
                 )
-            flash("Prepaga agregada correctamente.")
+            flash("Prepaga agregada correctamente.", "success")
         except ValueError as exc:
-            flash(str(exc))
+            flash(str(exc), "error")
         return redirect(url_for("configuracion_prepagas"))
 
     with db_connection() as connection:
@@ -1699,9 +1714,9 @@ def actualizar_porcentaje_prepaga(config_id: int) -> Any:
             )
             if result.rowcount == 0:
                 abort(404)
-        flash("Porcentaje actualizado correctamente.")
+        flash("Porcentaje actualizado correctamente.", "success")
     except ValueError as exc:
-        flash(str(exc))
+        flash(str(exc), "error")
     return redirect(url_for("configuracion_prepagas"))
 
 
@@ -1722,7 +1737,7 @@ def alternar_prepaga(config_id: int) -> Any:
         )
         if result.rowcount == 0:
             abort(404)
-    flash("Estado de la prepaga actualizado.")
+    flash("Estado de la prepaga actualizado.", "success")
     return redirect(url_for("configuracion_prepagas"))
 
 
@@ -1794,10 +1809,10 @@ def crear_ficha() -> Any:
                     datetime.now().isoformat(timespec="seconds"),
                 ),
             )
-        flash("Ficha cargada correctamente.")
+        flash("Ficha cargada correctamente.", "success")
         return redirect(url_for("mis_fichas"))
     except ValueError as exc:
-        flash(str(exc))
+        flash(str(exc), "error")
         return redirect(url_for("cargar_ficha"))
 
 

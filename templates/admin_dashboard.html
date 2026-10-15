@@ -4,14 +4,6 @@
 <div class="max-w-7xl mx-auto">
     <h2 class="page-title">Panel de Administración</h2>
 
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <div class="flash-message mb-4">
-                {% for message in messages %}<p>{{ message }}</p>{% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
-
     <section class="card mb-6">
         <h3 class="font-semibold mb-4">Filtros de fichas</h3>
         <form method="GET" action="{{ url_for('admin_dashboard') }}"
@@ -54,7 +46,8 @@
                 Descargar CSV
             </a>
             <form method="POST" action="{{ url_for('cerrar_periodo') }}"
-                  onsubmit="return confirm('¿Cerrar los períodos activos de todas las prepagas?');">
+                  data-confirm="¿Cerrar los períodos activos de todas las prepagas?"
+                  data-confirm-title="Cerrar período activo">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="periodo" value="{{ periodo_operativo }}">
                 <button class="btn btn-danger" type="submit">
@@ -71,11 +64,12 @@
                 <div class="text-2xl font-bold text-[var(--accent)]">{{ total|ars }}</div>
                 <div class="text-xs text-[var(--muted)] mt-1">{{ prepaga }}</div>
                 <div class="text-xs text-[var(--muted)] mt-2">
-                    Período activo: {{ periodos_prepaga.get(prepaga, periodo_operativo) }}
+                    Período <span class="state-badge active">{{ periodos_prepaga.get(prepaga, periodo_operativo) }} · Activo</span>
                 </div>
                 <form method="POST" action="{{ url_for('cerrar_periodo') }}"
                       class="mt-3"
-                      onsubmit="return confirm('¿Cerrar {{ prepaga }} para el período {{ periodos_prepaga.get(prepaga, periodo_operativo) }}?');">
+                      data-confirm="¿Cerrar {{ prepaga }} para el período {{ periodos_prepaga.get(prepaga, periodo_operativo) }}?"
+                      data-confirm-title="Cerrar período de prepaga">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="prepaga" value="{{ prepaga }}">
                     <input type="hidden" name="periodo" value="{{ periodos_prepaga.get(prepaga, periodo_operativo) }}">
@@ -117,19 +111,23 @@
                                 <td>{{ ficha.importe_comision|ars(2) }}</td>
                                 <td>{{ ficha.comision_a_liquidar|ars(2) }}</td>
                                 <td><span class="status-badge {{ ficha.estado|lower }}">{{ ficha.estado }}</span></td>
-                                <td>{{ ficha.periodo }}</td>
-                                <td>{{ ficha.fecha_carga or '-' }}</td>
+                                <td><span class="state-badge {% if ficha.periodo_cierre_id %}closed{% else %}active{% endif %}">{{ ficha.periodo }} · {{ 'Cerrado' if ficha.periodo_cierre_id else 'Activo' }}</span></td>
+                                <td>{{ ficha.fecha_carga|fecha }}</td>
                                 <td>
                                     {% if ficha.estado == 'PENDIENTE' %}
                                         <div class="flex gap-2">
                                             <form method="POST"
-                                                  action="{{ url_for('cambiar_estado_ficha', ficha_id=ficha.id, asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                                                  action="{{ url_for('cambiar_estado_ficha', ficha_id=ficha.id, asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}"
+                                                  data-confirm="¿Aprobar la ficha de {{ ficha.cliente_nombre }}?"
+                                                  data-confirm-title="Aprobar ficha">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <input type="hidden" name="estado" value="APROBADA">
                                                 <button type="submit" class="btn btn-primary text-sm">Aprobar</button>
                                             </form>
                                             <form method="POST"
-                                                  action="{{ url_for('cambiar_estado_ficha', ficha_id=ficha.id, asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}">
+                                                  action="{{ url_for('cambiar_estado_ficha', ficha_id=ficha.id, asesor_id=asesor_id_actual, periodo=periodo_actual, prepaga=prepaga_actual, q=q_actual) }}"
+                                                  data-confirm="¿Rechazar la ficha de {{ ficha.cliente_nombre }}?"
+                                                  data-confirm-title="Rechazar ficha">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <input type="hidden" name="estado" value="RECHAZADA">
                                                 <button type="submit" class="btn btn-danger text-sm">Rechazar</button>

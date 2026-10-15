@@ -30,6 +30,8 @@
                             <th>Aporte</th>
                             <th>Comisión</th>
                             <th>Estado</th>
+                            <th>Período</th>
+                            <th>Fecha</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -51,6 +53,8 @@
                                     {{ ficha.estado }}
                                 </span>
                             </td>
+                            <td><span class="state-badge {% if ficha.periodo_cierre_id %}closed{% else %}active{% endif %}">{{ ficha.periodo }} · {{ 'Cerrado' if ficha.periodo_cierre_id else 'Activo' }}</span></td>
+                            <td>{{ ficha.fecha_carga|fecha }}</td>
                             <td>
                                 <a href="/fichas/{{ ficha.id }}/detalle" class="text-[var(--accent)] text-sm hover:underline">Ver</a>
                             </td>

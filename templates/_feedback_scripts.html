@@ -1,0 +1,82 @@
+<script>
+    (() => {
+        const darkAlert = window.Swal ? Swal.mixin({
+            background: "#1e293b",
+            color: "#f8f9fa",
+            confirmButtonColor: "#10b981",
+            cancelButtonColor: "#475569",
+            customClass: {
+                popup: "border border-slate-700 rounded-xl",
+                confirmButton: "rounded-lg",
+                cancelButton: "rounded-lg"
+            }
+        }) : null;
+        const toast = window.Swal ? Swal.mixin({
+            toast: true,
+            position: "top-end",
+            showConfirmButton: false,
+            timer: 4000,
+            timerProgressBar: true,
+            background: "#1e293b",
+            color: "#f8f9fa"
+        }) : null;
+
+        document.querySelectorAll("[data-flash-message]").forEach((message) => {
+            const category = message.dataset.category;
+            const icon = ["error", "danger"].includes(category) ? "error"
+                : category === "warning" ? "warning" : "success";
+            if (toast) {
+                toast.fire({ icon, titleText: message.textContent.trim() });
+            } else {
+                console.error(message.textContent.trim());
+            }
+        });
+
+        document.addEventListener("submit", async (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || form.dataset.submitting === "true") {
+                return;
+            }
+            const submitter = event.submitter;
+            if (form.dataset.confirm && form.dataset.confirmed !== "true") {
+                event.preventDefault();
+                if (!darkAlert) {
+                    console.error("No se puede confirmar la acción porque SweetAlert2 no está disponible.");
+                    return;
+                }
+                const result = await darkAlert.fire({
+                    title: form.dataset.confirmTitle || "¿Confirmar esta acción?",
+                    text: form.dataset.confirm,
+                    icon: "warning",
+                    showCancelButton: true,
+                    confirmButtonText: "Confirmar",
+                    cancelButtonText: "Cancelar",
+                    reverseButtons: true
+                });
+                if (result.isConfirmed) {
+                    form.dataset.confirmed = "true";
+                    if (submitter instanceof HTMLElement && submitter.matches("button, input")) {
+                        form.requestSubmit(submitter);
+                    } else {
+                        form.requestSubmit();
+                    }
+                }
+                return;
+            }
+
+            form.dataset.submitting = "true";
+            if (submitter instanceof HTMLButtonElement) {
+                submitter.dataset.originalText = submitter.textContent || "";
+                submitter.textContent = "Cargando...";
+                submitter.disabled = true;
+            } else if (submitter instanceof HTMLInputElement) {
+                submitter.dataset.originalText = submitter.value;
+                submitter.value = "Cargando...";
+                submitter.disabled = true;
+            }
+            form.querySelectorAll("button[type='submit'], input[type='submit']").forEach((button) => {
+                button.disabled = true;
+            });
+        }, true);
+    })();
+</script>

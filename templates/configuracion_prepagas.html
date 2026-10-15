@@ -16,7 +16,7 @@
             </div>
             <div>
                 <label class="form-label" for="porcentaje_comision">Comisión (%)</label>
-                <input id="porcentaje_comision" type="number" name="porcentaje_comision" class="form-input" min="0" step="1" required>
+                <input id="porcentaje_comision" type="number" name="porcentaje_comision" class="form-input" min="0" step="1" inputmode="numeric" required>
             </div>
             <button type="submit" class="btn btn-primary mb-4">Agregar prepaga</button>
         </form>
@@ -40,17 +40,22 @@
                             <tr>
                                 <td>{{ prepaga.prepaga }}</td>
                                 <td>
-                                    <form method="POST" action="{{ url_for('actualizar_porcentaje_prepaga', config_id=prepaga.id) }}" class="flex items-center gap-2">
+                                    <form method="POST" action="{{ url_for('actualizar_porcentaje_prepaga', config_id=prepaga.id) }}"
+                                          class="flex items-center gap-2"
+                                          data-confirm="Guardar el nuevo porcentaje de {{ prepaga.prepaga }}?"
+                                          data-confirm-title="Actualizar comisión">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <label class="sr-only" for="porcentaje-{{ prepaga.id }}">Comisión de {{ prepaga.prepaga }} (%)</label>
-                                        <input id="porcentaje-{{ prepaga.id }}" type="number" name="porcentaje_comision" class="form-input mb-0 w-28" min="0" step="1" value="{{ prepaga.porcentaje_comision }}" required>
+                                        <input id="porcentaje-{{ prepaga.id }}" type="number" name="porcentaje_comision" class="form-input mb-0 w-28" min="0" step="1" inputmode="numeric" value="{{ prepaga.porcentaje_comision }}" required>
                                         <span>%</span>
                                         <button type="submit" class="btn btn-secondary">Guardar</button>
                                     </form>
                                 </td>
-                                <td>{{ "Activa" if prepaga.activa else "Inactiva" }}</td>
+                                <td><span class="state-badge {{ 'active' if prepaga.activa else 'inactive' }}">{{ "Activa" if prepaga.activa else "Inactiva" }}</span></td>
                                 <td>
-                                    <form method="POST" action="{{ url_for('alternar_prepaga', config_id=prepaga.id) }}">
+                                    <form method="POST" action="{{ url_for('alternar_prepaga', config_id=prepaga.id) }}"
+                                          data-confirm="¿{{ 'Desactivar' if prepaga.activa else 'Activar' }} {{ prepaga.prepaga }}?"
+                                          data-confirm-title="Cambiar estado de prepaga">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-secondary">
                                             {{ "Desactivar" if prepaga.activa else "Activar" }}

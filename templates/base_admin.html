@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broker de Salud - Administración</title>
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.0/dist/sweetalert2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.22.0/dist/sweetalert2.all.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -203,6 +205,23 @@
             border: 1px solid var(--border);
             border-radius: 4px;
             font-size: 0.75rem;
+        }
+
+        .state-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .state-badge.active, .state-badge.closed {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent);
+        }
+        .state-badge.inactive {
+            background: rgba(107, 114, 128, 0.18);
+            color: #cbd5e1;
         }
         
         .flash-message {
@@ -608,11 +627,11 @@
         
         <!-- Main Content -->
         <div class="main-content">
-            {% with messages = get_flashed_messages() %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
-                    <div class="mb-4 p-3 rounded" style="background: var(--card); border: 1px solid var(--border);">
-                        {% for msg in messages %}
-                            <p>{{ msg }}</p>
+                    <div class="sr-only" aria-live="polite">
+                        {% for category, msg in messages %}
+                            <span data-flash-message data-category="{{ category }}">{{ msg }}</span>
                         {% endfor %}
                     </div>
                 {% endif %}
@@ -622,6 +641,7 @@
         </div>
         </div>
     </div>
+    {% include "_feedback_scripts.html" %}
     <script>
         const mobileMenu = document.querySelector(".mobile-menu");
         document.querySelectorAll("[data-close-drawer]").forEach((button) => {

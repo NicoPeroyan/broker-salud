@@ -14,7 +14,7 @@
                     {% for periodo in periodos %}
                         <option value="{{ periodo.id }}"
                                 {% if periodo_id_actual == periodo.id|string %}selected{% endif %}>
-                            {{ periodo.nombre_periodo }} — {{ periodo.fecha_cierre }}
+                            {{ periodo.nombre_periodo }} — {{ periodo.fecha_cierre|fecha }}
                         </option>
                     {% endfor %}
                 </select>
@@ -69,6 +69,7 @@
         <section class="card">
             <h3 class="font-semibold mb-4">
                 Fichas del período {{ periodo_seleccionado.nombre_periodo }}
+                <span class="state-badge closed">Cerrado</span>
             </h3>
             {% if fichas %}
                 <div class="table-responsive">
@@ -103,7 +104,7 @@
                                             {{ ficha.estado }}
                                         </span>
                                     </td>
-                                    <td>{{ ficha.fecha_carga or '-' }}</td>
+                                    <td>{{ ficha.fecha_carga|fecha }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
