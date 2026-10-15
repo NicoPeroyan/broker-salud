@@ -158,6 +158,7 @@
             {% endif %}
             
             <form method="post" action="/login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="input-group">
                     <label for="username">Usuario o correo electrónico</label>
                     <input type="text" id="username" name="username" required autocomplete="username">

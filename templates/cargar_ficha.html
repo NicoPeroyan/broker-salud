@@ -53,11 +53,17 @@
                     <label class="form-label">Prepaga <span class="text-[var(--error)]">*</span></label>
                     <select name="prepaga" class="form-select" required>
                         <option value="" disabled selected>Seleccionar prepaga</option>
-                        <option value="Andes Salud">Andes Salud</option>
-                        <option value="Nobis Medical">Nobis Medical</option>
-                        <option value="Prevención Salud">Prevención Salud</option>
-                        <option value="Premedic">Premedic</option>
+                        {% for prepaga in prepagas %}
+                            <option value="{{ prepaga.prepaga }}">
+                                {{ prepaga.prepaga }} ({{ prepaga.porcentaje_comision }}%)
+                            </option>
+                        {% endfor %}
                     </select>
+                    {% if not prepagas %}
+                        <p class="text-xs text-[var(--muted)] mt-1">
+                            No tienes prepagas activas. <a href="{{ url_for('configuracion_prepagas') }}" class="text-[var(--accent)] hover:underline">Configurar prepagas</a>
+                        </p>
+                    {% endif %}
                 </div>
                 
                 <div>
@@ -70,7 +76,7 @@
             <div>
                 <label class="form-label">Aporte <span class="text-[var(--error)]">*</span></label>
                 <input type="number" name="aporte" class="form-input" min="0" step="any" required>
-                <p class="text-xs text-[var(--muted)] mt-1">El comisión se calculará automáticamente según la prepaga seleccionada.</p>
+                <p class="text-xs text-[var(--muted)] mt-1">La comisión se calculará automáticamente según el porcentaje vigente de la prepaga seleccionada.</p>
             </div>
             
             <button type="submit" class="w-full btn btn-primary py-2.5">

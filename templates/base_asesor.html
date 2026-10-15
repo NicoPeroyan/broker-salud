@@ -484,7 +484,10 @@
             </details>
             <div class="topbar-actions">
                 <span class="topbar-user">Hola, {{ nombre }}</span>
-                <a href="/logout" class="btn btn-secondary" aria-label="Cerrar sesión">Cerrar Sesión</a>
+                <form method="POST" action="{{ url_for('logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary" aria-label="Cerrar sesión">Cerrar Sesión</button>
+                </form>
             </div>
         </header>
         <div class="workspace">
@@ -536,6 +539,7 @@
                             <span>Cargar Ficha</span>
                         </a>
                     </li>
+
                 </ul>
                 </nav>
             </details>

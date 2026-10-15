@@ -1,0 +1,70 @@
+{% extends "base_admin.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+    <div class="card">
+        <h2 class="page-title mb-2">Configuración de prepagas</h2>
+        <p class="text-sm text-[var(--muted)] mb-6">
+            Define el porcentaje de comisión de cada prepaga. Ese porcentaje quedará registrado en las fichas nuevas.
+        </p>
+
+        <form method="POST" action="{{ url_for('configuracion_prepagas') }}" class="grid grid-cols-1 sm:grid-cols-[1fr_12rem_auto] gap-4 items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div>
+                <label class="form-label" for="prepaga">Nombre de la prepaga</label>
+                <input id="prepaga" type="text" name="prepaga" class="form-input" maxlength="120" required>
+            </div>
+            <div>
+                <label class="form-label" for="porcentaje_comision">Comisión (%)</label>
+                <input id="porcentaje_comision" type="number" name="porcentaje_comision" class="form-input" min="0" max="100" step="0.01" required>
+            </div>
+            <button type="submit" class="btn btn-primary mb-4">Agregar prepaga</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3 class="text-lg font-semibold mb-4">Mis prepagas</h3>
+        {% if prepagas %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Prepaga</th>
+                            <th>Comisión</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prepaga in prepagas %}
+                            <tr>
+                                <td>{{ prepaga.prepaga }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('actualizar_porcentaje_prepaga', config_id=prepaga.id) }}" class="flex items-center gap-2">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <label class="sr-only" for="porcentaje-{{ prepaga.id }}">Comisión de {{ prepaga.prepaga }} (%)</label>
+                                        <input id="porcentaje-{{ prepaga.id }}" type="number" name="porcentaje_comision" class="form-input mb-0 w-28" min="0" max="100" step="0.01" value="{{ prepaga.porcentaje_comision }}" required>
+                                        <span>%</span>
+                                        <button type="submit" class="btn btn-secondary">Guardar</button>
+                                    </form>
+                                </td>
+                                <td>{{ "Activa" if prepaga.activa else "Inactiva" }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('alternar_prepaga', config_id=prepaga.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-secondary">
+                                            {{ "Desactivar" if prepaga.activa else "Activar" }}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-[var(--muted)]">Todavía no tienes prepagas configuradas.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

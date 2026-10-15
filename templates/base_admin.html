@@ -483,6 +483,9 @@
                         <ul class="sidebar-links">
                             <li><a href="/" class="sidebar-link"><span>Inicio</span></a></li>
                             <li><a href="/admin-dashboard" class="sidebar-link active"><span>Administración</span></a></li>
+                            {% if es_admin %}
+                            <li><a href="/configuracion-prepagas" class="sidebar-link {% if route == 'configuracion-prepagas' %}active{% endif %}"><span>Configuración</span></a></li>
+                            {% endif %}
                         </ul>
                     </nav>
                     <div class="drawer-user">Usuario: {{ nombre }} (Admin)</div>
@@ -490,7 +493,10 @@
             </details>
             <div class="topbar-actions">
                 <span class="topbar-user">Usuario: {{ nombre }} (Admin)</span>
-                <a href="/logout" class="btn btn-secondary" aria-label="Cerrar sesión">Cerrar Sesión</a>
+                <form method="POST" action="{{ url_for('logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary" aria-label="Cerrar sesión">Cerrar Sesión</button>
+                </form>
             </div>
         </header>
         <div class="workspace">
@@ -532,6 +538,15 @@
                                 <line x1="9" y1="3" x2="9" y2="21"/>
                             </svg>
                             <span>Administración</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/configuracion-prepagas" class="sidebar-link {% if route == 'configuracion-prepagas' %}active{% endif %}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.7 1.7 0 00.34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 00-1.75.98l-.03.08h-3.4l-.03-.08a1.7 1.7 0 00-1.75-.98l-.08.02-1.7-2.94.06-.06A1.7 1.7 0 009.6 15l-.08-.03v-3.4l.08-.03a1.7 1.7 0 00.98-1.75l-.02-.08 2.94-1.7.06.06a1.7 1.7 0 001.88.34l.03-.08h3.4l.03.08a1.7 1.7 0 00.98 1.75l.08.03v3.4z"/>
+                            </svg>
+                            <span>Configuración</span>
                         </a>
                     </li>
                     {% endif %}

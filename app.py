@@ -40,6 +40,7 @@ DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", BASE_DIR / "app.db"))
 PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 VALID_STATES = {"APROBADA", "RECHAZADA"}
 RESET_PASSWORD = "Arper123"
+DEFAULT_PREPAGAS = ("Premedic", "Andes Salud", "Prevención Salud", "Nobis")
 
 app = Flask(__name__)
 secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -61,6 +62,34 @@ app.config.update(
 )
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
+
+
+def csrf_token() -> str:
+    token = session.get("_csrf_token")
+    if not isinstance(token, str):
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+@app.context_processor
+def inject_csrf_token() -> dict[str, Any]:
+    return {"csrf_token": csrf_token}
+
+
+@app.before_request
+def validate_csrf_token() -> None:
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+
+    expected_token = session.get("_csrf_token")
+    submitted_token = request.form.get("csrf_token", "")
+    if (
+        not isinstance(expected_token, str)
+        or not submitted_token
+        or not hmac.compare_digest(expected_token, submitted_token)
+    ):
+        abort(400, description="Token CSRF ausente o inválido.")
 
 
 class DatabaseConnection:
@@ -202,6 +231,20 @@ def init_db() -> None:
                 motivo_rechazo TEXT,
                 fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (asesor_id) REFERENCES usuarios(id)
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS prepagas_config (
+                id {user_id_type},
+                usuario_id INTEGER NOT NULL,
+                prepaga TEXT NOT NULL,
+                porcentaje_comision REAL NOT NULL DEFAULT 0
+                    CHECK (porcentaje_comision >= 0 AND porcentaje_comision <= 100),
+                activa BOOLEAN NOT NULL DEFAULT TRUE,
+                UNIQUE (usuario_id, prepaga),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
             )
             """
         )
@@ -357,6 +400,24 @@ def init_db() -> None:
                 FOREIGN KEY (cerrado_por) REFERENCES usuarios(id)
             )
             """
+        )
+        users = connection.execute("SELECT id FROM usuarios").fetchall()
+        for user in users:
+            _ensure_default_prepagas(connection, int(user["id"]))
+
+
+def _ensure_default_prepagas(
+    connection: DatabaseConnection, user_id: int
+) -> None:
+    for prepaga in DEFAULT_PREPAGAS:
+        connection.execute(
+            """
+            INSERT INTO prepagas_config (
+                usuario_id, prepaga, porcentaje_comision, activa
+            ) VALUES (?, ?, 0, TRUE)
+            ON CONFLICT (usuario_id, prepaga) DO NOTHING
+            """,
+            (user_id, prepaga),
         )
 
 
@@ -536,6 +597,24 @@ def login_required(view: Any) -> Any:
     return wrapped
 
 
+def _session_user_is_admin() -> bool:
+    with db_connection() as connection:
+        user = connection.execute(
+            "SELECT rol, es_admin FROM usuarios WHERE id = ?",
+            (session["user_id"],),
+        ).fetchone()
+    return user is not None and (
+        user["rol"] == "admin" or bool(user["es_admin"])
+    )
+
+
+def _require_prepaga_config_admin() -> Any | None:
+    if _session_user_is_admin():
+        return None
+    flash("No tienes permisos para acceder a esta sección")
+    return redirect(url_for("mis_fichas"))
+
+
 def _password_matches(stored_password: str, supplied_password: str) -> bool:
     if not stored_password:
         return False
@@ -578,6 +657,10 @@ def login() -> Any:
     if user is None or not _password_matches(user["password"] or "", password):
         return render_template("login.html", error="Usuario o contraseña incorrectos."), 401
 
+    if user["rol"] == "asesor":
+        with db_connection() as connection:
+            _ensure_default_prepagas(connection, int(user["id"]))
+
     session.clear()
     session["user_id"] = user["id"]
     session["username"] = user["username"]
@@ -588,7 +671,7 @@ def login() -> Any:
     return redirect(url_for("mis_fichas"))
 
 
-@app.get("/logout")
+@app.post("/logout")
 def logout() -> Any:
     session.clear()
     return redirect(url_for("login"))
@@ -1026,12 +1109,22 @@ def asesor_dashboard() -> Any:
 def cargar_ficha() -> Any:
     if session.get("rol") != "asesor":
         abort(403)
+    with db_connection() as connection:
+        prepagas = connection.execute(
+            """
+            SELECT prepaga, porcentaje_comision
+            FROM prepagas_config
+            WHERE usuario_id = ? AND activa = TRUE
+            ORDER BY LOWER(prepaga)
+            """,
+            (session["user_id"],),
+        ).fetchall()
     return render_template(
         "cargar_ficha.html",
         nombre=session.get("nombre", ""),
+        prepagas=prepagas,
         es_admin=False,
         route="cargar-ficha",
-        csrf_token=lambda: "",
     )
 
 
@@ -1050,6 +1143,119 @@ def _parse_amount(
     return amount
 
 
+def _parse_percentage(raw_value: str) -> Decimal:
+    percentage = _parse_amount(raw_value, "porcentaje de comisión")
+    if percentage > 100:
+        raise ValueError("El porcentaje de comisión no puede superar el 100%.")
+    return percentage
+
+
+@app.route("/configuracion-prepagas", methods=["GET", "POST"])
+@login_required
+def configuracion_prepagas() -> Any:
+    denied_response = _require_prepaga_config_admin()
+    if denied_response is not None:
+        return denied_response
+
+    user_id = int(session["user_id"])
+    if request.method == "POST":
+        prepaga = request.form.get("prepaga", "").strip()
+        try:
+            if not prepaga:
+                raise ValueError("El nombre de la prepaga es obligatorio.")
+            percentage = _parse_percentage(
+                request.form.get("porcentaje_comision", "")
+            )
+            with db_connection() as connection:
+                existing = connection.execute(
+                    """
+                    SELECT id FROM prepagas_config
+                    WHERE usuario_id = ? AND LOWER(prepaga) = LOWER(?)
+                    """,
+                    (user_id, prepaga),
+                ).fetchone()
+                if existing is not None:
+                    raise ValueError("Ya tienes esa prepaga configurada.")
+                connection.execute(
+                    """
+                    INSERT INTO prepagas_config (
+                        usuario_id, prepaga, porcentaje_comision, activa
+                    ) VALUES (?, ?, ?, TRUE)
+                    """,
+                    (user_id, prepaga, float(percentage)),
+                )
+            flash("Prepaga agregada correctamente.")
+        except ValueError as exc:
+            flash(str(exc))
+        return redirect(url_for("configuracion_prepagas"))
+
+    with db_connection() as connection:
+        prepagas = connection.execute(
+            """
+            SELECT id, prepaga, porcentaje_comision, activa
+            FROM prepagas_config
+            WHERE usuario_id = ?
+            ORDER BY LOWER(prepaga)
+            """,
+            (user_id,),
+        ).fetchall()
+    return render_template(
+        "configuracion_prepagas.html",
+        nombre=session.get("nombre", ""),
+        prepagas=prepagas,
+        es_admin=True,
+        route="configuracion-prepagas",
+    )
+
+
+@app.post("/configuracion-prepagas/<int:config_id>/porcentaje")
+@login_required
+def actualizar_porcentaje_prepaga(config_id: int) -> Any:
+    denied_response = _require_prepaga_config_admin()
+    if denied_response is not None:
+        return denied_response
+    try:
+        percentage = _parse_percentage(
+            request.form.get("porcentaje_comision", "")
+        )
+        with db_connection() as connection:
+            result = connection.execute(
+                """
+                UPDATE prepagas_config
+                SET porcentaje_comision = ?
+                WHERE id = ? AND usuario_id = ?
+                """,
+                (float(percentage), config_id, session["user_id"]),
+            )
+            if result.rowcount == 0:
+                abort(404)
+        flash("Porcentaje actualizado correctamente.")
+    except ValueError as exc:
+        flash(str(exc))
+    return redirect(url_for("configuracion_prepagas"))
+
+
+@app.post("/configuracion-prepagas/<int:config_id>/alternar")
+@login_required
+def alternar_prepaga(config_id: int) -> Any:
+    denied_response = _require_prepaga_config_admin()
+    if denied_response is not None:
+        return denied_response
+    with db_connection() as connection:
+        result = connection.execute(
+            """
+            UPDATE prepagas_config
+            SET activa = CASE WHEN activa THEN FALSE ELSE TRUE END
+            WHERE id = ? AND usuario_id = ?
+            """,
+            (config_id, session["user_id"]),
+        )
+        if result.rowcount == 0:
+            abort(404)
+    flash("Estado de la prepaga actualizado.")
+    return redirect(url_for("configuracion_prepagas"))
+
+
 @app.post("/fichas")
 @login_required
 def crear_ficha() -> Any:
@@ -1066,16 +1272,28 @@ def crear_ficha() -> Any:
     telefono = (request.form.get("telefono") or "").strip()
     grupo_familiar = request.form.get("grupo_familiar") or "Sin especificar"
     raw_salary = request.form.get("sueldo_bruto", "")
-    raw_commission = request.form.get("importe_comision", "").strip()
+    raw_contribution = request.form.get("aporte", "")
     try:
         if not client_name or not cuil or not prepaga:
             raise ValueError("Nombre, CUIL y prepaga son obligatorios.")
         salary = _parse_amount(raw_salary, "sueldo bruto")
-        commission = _parse_amount(
-            raw_commission or request.form.get("aporte", "0")
-        )
+        contribution = _parse_amount(raw_contribution, "aporte")
         active_period = date.today().strftime("%Y-%m")
         with db_connection() as connection:
+            configured_prepaga = connection.execute(
+                """
+                SELECT porcentaje_comision
+                FROM prepagas_config
+                WHERE usuario_id = ? AND prepaga = ? AND activa = TRUE
+                """,
+                (session["user_id"], prepaga),
+            ).fetchone()
+            if configured_prepaga is None:
+                raise ValueError(
+                    "La prepaga seleccionada no está activa en tu configuración."
+                )
+            percentage = Decimal(str(configured_prepaga["porcentaje_comision"]))
+            commission = contribution * percentage / Decimal("100")
             active_period = _active_period(connection)
             connection.execute(
                 """
@@ -1083,8 +1301,9 @@ def crear_ficha() -> Any:
                     asesor_id, cliente_nombre, cuil, prepaga, plan,
                     importe_comision, estado, periodo, fecha_carga,
                     nombre_afiliado, cuil_afiliado, empresa, clave_fiscal,
-                    telefono, grupo_familiar, sueldo_bruto, aporte, fecha_creacion
-                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    telefono, grupo_familiar, sueldo_bruto, aporte,
+                    porcentaje_comision, fecha_creacion
+                ) VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session["user_id"],
@@ -1102,7 +1321,8 @@ def crear_ficha() -> Any:
                     telefono,
                     grupo_familiar,
                     float(salary),
-                    float(commission),
+                    float(contribution),
+                    float(percentage),
                     datetime.now().isoformat(timespec="seconds"),
                 ),
             )
